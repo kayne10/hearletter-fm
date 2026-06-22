@@ -1,5 +1,7 @@
 # Practical MVP Plan
 
+For a restart-friendly roadmap with account setup gates, see [Milestones](milestones.md).
+
 ## Phase 1: Repo and Contracts
 
 - Establish monorepo layout.
@@ -55,4 +57,3 @@
 - Publisher-specific scraping adapters.
 - Complex orchestration with Step Functions.
 - Full web application.
-

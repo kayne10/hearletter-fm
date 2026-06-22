@@ -52,5 +52,6 @@ For local imports without packaging a Lambda bundle, the test configuration adds
 - [Architecture](docs/architecture.md)
 - [Event Contracts](docs/event-contracts.md)
 - [MVP Plan](docs/mvp-plan.md)
+- [Milestones](docs/milestones.md)
+- [AWS Bootstrap Checklist](docs/aws-bootstrap.md)
 - [Local Development](docs/local-development.md)
-
