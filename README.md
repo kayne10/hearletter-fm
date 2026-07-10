@@ -47,6 +47,27 @@ For local imports without packaging a Lambda bundle, the test configuration adds
 - `packages/utils`
 - `services/shared`
 
+## Inspecting A Raw SES Email
+
+After SES stores a test email in S3, download the raw MIME file and inspect it without dumping large inline images:
+
+```bash
+aws s3 cp s3://<raw-email-bucket>/<object-key> tmp/test.eml
+python3 scripts/inspect_raw_email.py tmp/test.eml
+```
+
+To print decoded text parts in full:
+
+```bash
+python3 scripts/inspect_raw_email.py tmp/test.eml --extract-text
+```
+
+To save decoded non-text parts such as inline images:
+
+```bash
+python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
+```
+
 ## Architecture Docs
 
 - [Architecture](docs/architecture.md)
