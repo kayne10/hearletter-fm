@@ -1,5 +1,7 @@
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix           = "${var.project_name}-${var.environment}"
+  receipt_rule_name     = "${local.name_prefix}-listen"
+  receipt_rule_set_name = "${local.name_prefix}-receipt-rules"
 
   services = {
     email_parser = {
@@ -53,6 +55,10 @@ locals {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
+
 resource "aws_s3_bucket" "raw_email" {
   bucket_prefix = "${local.name_prefix}-raw-email-"
   tags          = local.common_tags
@@ -86,6 +92,31 @@ resource "aws_s3_bucket_public_access_block" "private_buckets" {
   block_public_policy     = !var.feed_public_read
   ignore_public_acls      = !var.feed_public_read
   restrict_public_buckets = !var.feed_public_read
+}
+
+resource "aws_s3_bucket_policy" "allow_ses_raw_email_puts" {
+  bucket = aws_s3_bucket.raw_email.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowSESPuts"
+        Effect = "Allow"
+        Principal = {
+          Service = "ses.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.raw_email.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceAccount" = data.aws_caller_identity.current.account_id
+            "AWS:SourceArn"     = "arn:${data.aws_partition.current.partition}:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:receipt-rule-set/${local.receipt_rule_set_name}:receipt-rule/${local.receipt_rule_name}"
+          }
+        }
+      }
+    ]
+  })
 }
 
 resource "aws_sqs_queue" "dlq" {
@@ -268,14 +299,16 @@ resource "aws_lambda_event_source_mapping" "rss_from_episode" {
 }
 
 resource "aws_lambda_permission" "allow_ses_parser" {
-  statement_id  = "AllowExecutionFromSES"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.service["email_parser"].function_name
-  principal     = "ses.amazonaws.com"
+  statement_id   = "AllowExecutionFromSES"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.service["email_parser"].function_name
+  principal      = "ses.amazonaws.com"
+  source_account = data.aws_caller_identity.current.account_id
+  source_arn     = "arn:${data.aws_partition.current.partition}:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:receipt-rule-set/${local.receipt_rule_set_name}:receipt-rule/${local.receipt_rule_name}"
 }
 
 resource "aws_ses_receipt_rule_set" "main" {
-  rule_set_name = "${local.name_prefix}-receipt-rules"
+  rule_set_name = local.receipt_rule_set_name
 }
 
 resource "aws_ses_active_receipt_rule_set" "main" {
@@ -283,7 +316,7 @@ resource "aws_ses_active_receipt_rule_set" "main" {
 }
 
 resource "aws_ses_receipt_rule" "listen" {
-  name          = "${local.name_prefix}-listen"
+  name          = local.receipt_rule_name
   rule_set_name = aws_ses_receipt_rule_set.main.rule_set_name
   recipients    = [var.inbound_recipient]
   enabled       = true
@@ -301,6 +334,8 @@ resource "aws_ses_receipt_rule" "listen" {
     position        = 2
   }
 
-  depends_on = [aws_lambda_permission.allow_ses_parser]
+  depends_on = [
+    aws_lambda_permission.allow_ses_parser,
+    aws_s3_bucket_policy.allow_ses_raw_email_puts,
+  ]
 }
-

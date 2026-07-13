@@ -21,6 +21,18 @@ artifacts/lambda/
 └── rss-generator.zip
 ```
 
+Build them from the repo root:
+
+```bash
+python3 scripts/package_lambdas.py
+```
+
+For a local Terraform planning pass without installing third-party dependencies:
+
+```bash
+python3 scripts/package_lambdas.py --skip-deps
+```
+
 The packaging script is intentionally not baked into Terraform. Keeping build and deploy separate makes CI easier and avoids Terraform running local build tools.
 
 ## Deploy Sketch
@@ -34,4 +46,3 @@ terraform plan \
 ```
 
 SES inbound receiving is region-specific. Deploy this stack in a region that supports SES email receiving.
-

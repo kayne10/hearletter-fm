@@ -52,7 +52,7 @@ Goal: make the current infrastructure scaffold plan cleanly.
 Tasks:
 
 - Create the Lambda zip packaging script expected by Terraform.
-- Package the five service Lambdas into `artifacts/lambda/`.
+- Package the five service Lambdas into `artifacts/lambda/` with `python3 scripts/package_lambdas.py`.
 - Run `terraform fmt -check`.
 - Run `terraform validate`.
 - Run `terraform plan`.
@@ -169,4 +169,3 @@ Tasks:
 Done when:
 
 - The experience feels like "forward newsletter -> morning podcast" rather than a tech demo.
-
