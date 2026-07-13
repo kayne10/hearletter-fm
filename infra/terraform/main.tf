@@ -268,6 +268,7 @@ resource "aws_lambda_function" "service" {
       SCRIPT_QUEUE_URL     = aws_sqs_queue.pipeline["briefing-script"].url
       EPISODE_QUEUE_URL    = aws_sqs_queue.pipeline["generated-episode"].url
       TTS_PROVIDER         = "openai"
+      LOG_FULL_EVENTS      = "false"
       POWERTOOLS_SERVICE   = each.key
       POWERTOOLS_LOG_LEVEL = "INFO"
     }

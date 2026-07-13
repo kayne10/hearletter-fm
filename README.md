@@ -68,6 +68,42 @@ To save decoded non-text parts such as inline images:
 python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
 ```
 
+## Running The Pipeline Locally
+
+Use the raw email fixture to generate stage-by-stage files without invoking AWS:
+
+```bash
+python3 scripts/run_local_pipeline.py --raw-email tests/fixtures/raw_email
+```
+
+The runner writes a timestamped folder under `artifacts/local/` with each stage's input and output:
+
+- `01_email_parser/body.txt`
+- `01_email_parser/body.html`
+- `02_newsletter_cleaner/clean_text.txt`
+- `02_newsletter_cleaner/story_candidates.json`
+- `03_summarizer/podcast_context.json`
+- `03_summarizer/agent_prompt.txt`
+- `03_summarizer/script_draft.txt`
+- `04_tts_request/tts_request.json`
+
+## Lambda Event Troubleshooting
+
+Each Lambda logs a compact JSON event summary to CloudWatch when invoked. To inspect the parser and cleaner logs:
+
+```bash
+aws logs tail /aws/lambda/hearletter-fm-dev-email-parser --follow --region us-east-2
+aws logs tail /aws/lambda/hearletter-fm-dev-newsletter-cleaner --follow --region us-east-2
+```
+
+By default, logs include event shape, record counts, SQS message IDs, and pipeline IDs. To temporarily log truncated full events, set the Lambda environment variable:
+
+```text
+LOG_FULL_EVENTS=true
+```
+
+Turn it back off after debugging to avoid noisy CloudWatch logs.
+
 ## Architecture Docs
 
 - [Architecture](docs/architecture.md)

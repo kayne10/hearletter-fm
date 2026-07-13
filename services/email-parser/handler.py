@@ -16,6 +16,7 @@ from hearletter_events.contracts import (
     utc_now_iso,
 )
 from hearletter_shared.event_codec import dumps_event
+from hearletter_shared.lambda_events import log_lambda_event
 
 DEFAULT_TENANT_ID = "default"
 DEFAULT_RAW_EMAIL_PREFIX = "raw-email/default/"
@@ -25,6 +26,8 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     """Parse an SES receipt event and enqueue a parsed-newsletter event."""
 
     import boto3
+
+    log_lambda_event("email-parser", event)
 
     s3_client = boto3.client("s3")
     sqs_client = boto3.client("sqs")

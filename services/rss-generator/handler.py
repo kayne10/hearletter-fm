@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hearletter_shared.lambda_events import iter_pipeline_events, log_lambda_event
 from hearletter_shared.rss import RssEpisode, build_podcast_feed
 
 
@@ -13,6 +14,14 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     The production version should load existing episode metadata from DynamoDB, sort by
     `published_at`, and write the resulting feed XML to S3.
     """
+
+    log_lambda_event("rss-generator", event)
+    outputs = [process_event(pipeline_event) for pipeline_event in iter_pipeline_events(event)]
+    return {"processed": len(outputs), "feeds": outputs}
+
+
+def process_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Build a feed for a single generated-episode event."""
 
     payload = event["payload"]
     episode = RssEpisode(
@@ -32,4 +41,3 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         episodes=[episode],
     )
     return {"feed_xml": feed_xml}
-

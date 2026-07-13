@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Any, Protocol
 
 from hearletter_domain.models import S3ObjectRef
 from hearletter_events.contracts import GeneratedEpisodePayload, EventEnvelope, new_id, utc_now_iso
+from hearletter_shared.event_codec import dumps_event
+from hearletter_shared.lambda_events import iter_pipeline_events, log_lambda_event
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,23 @@ class TTSProvider(Protocol):
 def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     """Generate episode metadata after TTS audio is created."""
 
+    import boto3
+
+    log_lambda_event("tts", event)
+    sqs_client = boto3.client("sqs")
+    output_events = [process_event(pipeline_event) for pipeline_event in iter_pipeline_events(event)]
+
+    queue_url = os.environ.get("EPISODE_QUEUE_URL")
+    if queue_url:
+        for output_event in output_events:
+            sqs_client.send_message(QueueUrl=queue_url, MessageBody=dumps_event(output_event))
+
+    return {"processed": len(output_events), "events": [output_event.to_dict() for output_event in output_events]}
+
+
+def process_event(event: dict[str, Any]) -> EventEnvelope[GeneratedEpisodePayload]:
+    """Create a generated-episode event from a briefing-scripted event."""
+
     now = utc_now_iso()
     tenant_id = str(event["tenant_id"])
     newsletter_id = str(event["newsletter_id"])
@@ -45,7 +65,7 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         duration_seconds=None,
         published_at=now,
     )
-    episode_event = EventEnvelope(
+    return EventEnvelope(
         event_id=new_id("evt"),
         event_type="episode.generated",
         schema_version="1.0",
@@ -55,5 +75,3 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         occurred_at=now,
         payload=payload,
     )
-    return episode_event.to_dict()
-
