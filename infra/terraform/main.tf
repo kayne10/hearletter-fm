@@ -260,6 +260,8 @@ resource "aws_lambda_function" "service" {
       ARTIFACT_BUCKET      = aws_s3_bucket.artifacts.bucket
       AUDIO_BUCKET         = aws_s3_bucket.audio.bucket
       FEED_BUCKET          = aws_s3_bucket.feed.bucket
+      RAW_EMAIL_BUCKET     = aws_s3_bucket.raw_email.bucket
+      RAW_EMAIL_PREFIX     = "raw-email/default/"
       METADATA_TABLE       = aws_dynamodb_table.metadata.name
       PARSED_QUEUE_URL     = aws_sqs_queue.pipeline["parsed-newsletter"].url
       CLEANED_QUEUE_URL    = aws_sqs_queue.pipeline["cleaned-newsletter"].url
