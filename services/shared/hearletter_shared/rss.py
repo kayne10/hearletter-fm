@@ -42,7 +42,11 @@ def build_podcast_feed(
     SubElement(channel, "title").text = title
     SubElement(channel, "description").text = description
     SubElement(channel, "link").text = site_url
-    SubElement(channel, "atom:link", {"href": feed_url, "rel": "self", "type": "application/rss+xml"})
+    SubElement(
+        channel,
+        "atom:link",
+        {"href": feed_url, "rel": "self", "type": "application/rss+xml"},
+    )
 
     for episode in episodes:
         item = SubElement(channel, "item")

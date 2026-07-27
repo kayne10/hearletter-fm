@@ -56,11 +56,14 @@ class PollySynthesizer:
         )
 
 
-def build_polly_synthesizer(*, boto3_session: Any, config: PollySynthesisConfig) -> PollySynthesizer:
+def build_polly_synthesizer(
+    *,
+    boto3_session: Any,
+    config: PollySynthesisConfig,
+) -> PollySynthesizer:
     """Build a Polly synthesizer from a boto3 session."""
 
     return PollySynthesizer(
         polly_client=boto3_session.client("polly", region_name=config.region_name),
         config=config,
     )
-

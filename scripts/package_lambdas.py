@@ -33,10 +33,14 @@ class LambdaService:
 
 SERVICES = [
     LambdaService(name="email-parser", source_dir=REPO_ROOT / "services" / "email-parser"),
-    LambdaService(name="newsletter-cleaner", source_dir=REPO_ROOT / "services" / "newsletter-cleaner"),
+    LambdaService(
+        name="newsletter-cleaner",
+        source_dir=REPO_ROOT / "services" / "newsletter-cleaner",
+    ),
     LambdaService(name="summarizer", source_dir=REPO_ROOT / "services" / "summarizer"),
     LambdaService(name="tts", source_dir=REPO_ROOT / "services" / "tts"),
     LambdaService(name="rss-generator", source_dir=REPO_ROOT / "services" / "rss-generator"),
+    LambdaService(name="notifier", source_dir=REPO_ROOT / "services" / "notifier"),
 ]
 
 SHARED_PACKAGE_ROOTS = [
@@ -136,4 +140,3 @@ def install_requirements(requirements_file: Path, target_dir: Path) -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -24,7 +24,11 @@ def test_local_pipeline_runs_text_only_for_data_samples(tmp_path: Path) -> None:
     )
 
     outputs = [
-        run_local_pipeline.run_sample(sample_path=sample, output_dir=tmp_path / sample.name, modules=modules)
+        run_local_pipeline.run_sample(
+            sample_path=sample,
+            output_dir=tmp_path / sample.name,
+            modules=modules,
+        )
         for sample in run_local_pipeline.discover_input_files(run_local_pipeline.REPO_ROOT / "data")
     ]
 

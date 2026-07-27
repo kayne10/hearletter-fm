@@ -38,3 +38,14 @@ variable "feed_public_read" {
   default     = false
 }
 
+variable "notification_from_email" {
+  description = "Verified SES email address used as the sender for MP3-ready notifications. Defaults to no-reply@domain_name."
+  type        = string
+  default     = ""
+}
+
+variable "audio_url_ttl_seconds" {
+  description = "Expiration time for presigned MP3 links emailed to users."
+  type        = number
+  default     = 604800
+}

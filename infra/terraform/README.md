@@ -7,6 +7,7 @@ This directory contains the AWS MVP scaffold for Hearletter FM:
 - DynamoDB metadata/idempotency table.
 - Lambda execution role and one Lambda function per service stage.
 - SES receipt rule that stores inbound mail in S3 and invokes the parser.
+- SES outbound permission for emailing a presigned MP3 link back to the forwarding address.
 
 ## Expected Packaging
 
@@ -18,7 +19,8 @@ artifacts/lambda/
 ├── newsletter-cleaner.zip
 ├── summarizer.zip
 ├── tts.zip
-└── rss-generator.zip
+├── rss-generator.zip
+└── notifier.zip
 ```
 
 Build them from the repo root:
@@ -42,7 +44,9 @@ terraform init
 terraform plan \
   -var="project_name=hearletter-fm" \
   -var="domain_name=example.com" \
-  -var="inbound_recipient=listen@example.com"
+  -var="inbound_recipient=listen@example.com" \
+  -var="notification_from_email=no-reply@example.com"
 ```
 
 SES inbound receiving is region-specific. Deploy this stack in a region that supports SES email receiving.
+The notification sender must be a verified SES identity in the deployment region, unless your account is out of the SES sandbox and the domain identity covers it.

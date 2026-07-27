@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from hearletter_domain.models import S3ObjectRef
-from hearletter_events.contracts import GeneratedEpisodePayload, EventEnvelope, new_id, utc_now_iso
+from hearletter_events.contracts import EventEnvelope, GeneratedEpisodePayload, new_id, utc_now_iso
 from hearletter_shared.event_codec import dumps_event
 from hearletter_shared.lambda_events import iter_pipeline_events, log_lambda_event
 from hearletter_shared.polly import (
@@ -57,12 +57,14 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         for pipeline_event in iter_pipeline_events(event)
     ]
 
-    queue_url = os.environ.get("EPISODE_QUEUE_URL")
-    if queue_url:
+    for queue_url in output_queue_urls(os.environ):
         for output_event in output_events:
             sqs_client.send_message(QueueUrl=queue_url, MessageBody=dumps_event(output_event))
 
-    return {"processed": len(output_events), "events": [output_event.to_dict() for output_event in output_events]}
+    return {
+        "processed": len(output_events),
+        "events": [output_event.to_dict() for output_event in output_events],
+    }
 
 
 def process_event(
@@ -106,6 +108,7 @@ def process_event(
         byte_length=byte_length,
         duration_seconds=None,
         published_at=now,
+        notification_email=event["payload"].get("notification_email"),
     )
     return EventEnvelope(
         event_id=new_id("evt"),
@@ -133,3 +136,13 @@ def validate_script_ref(ref: Any) -> None:
     key = str(ref.get("key", "")) if isinstance(ref, dict) else ""
     if not bucket or bucket == "ARTIFACT_BUCKET":
         raise RuntimeError(f"Invalid TTS script artifact bucket: bucket={bucket!r}, key={key!r}")
+
+
+def output_queue_urls(env: Any) -> list[str]:
+    """Return queues that should receive generated episode events."""
+
+    return [
+        str(env[name])
+        for name in ("EPISODE_QUEUE_URL", "NOTIFICATION_QUEUE_URL")
+        if env.get(name)
+    ]

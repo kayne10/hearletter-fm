@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from html import escape
 import json
 import os
 import re
+from datetime import UTC, datetime
+from html import escape
 from typing import Any
 
 from hearletter_domain.models import ContentMode, S3ObjectRef
@@ -45,7 +45,10 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         for output_event in output_events:
             sqs_client.send_message(QueueUrl=queue_url, MessageBody=dumps_event(output_event))
 
-    return {"processed": len(output_events), "events": [output_event.to_dict() for output_event in output_events]}
+    return {
+        "processed": len(output_events),
+        "events": [output_event.to_dict() for output_event in output_events],
+    }
 
 
 def process_event(
@@ -110,6 +113,7 @@ def process_event(
             ssml_key=ssml_key,
             ssml_text_value=polly_ssml,
             artifact_bucket=artifact_bucket,
+            notification_email=payload.get("notification_email"),
         )
     else:
         script_payload = BriefingScriptPayload(
@@ -118,6 +122,7 @@ def process_event(
             script=S3ObjectRef(bucket="ARTIFACT_BUCKET", key=ssml_key),
             estimated_duration_seconds=None,
             voice=DEFAULT_POLLY_VOICE,
+            notification_email=payload.get("notification_email"),
         )
 
     return EventEnvelope(
@@ -222,32 +227,6 @@ def build_podcast_context(
             "candidate_count": len(story_candidates),
         },
     }
-
-
-def build_script_draft(context: dict[str, Any]) -> str:
-    """Create a deterministic local script draft for debugging the TTS input shape."""
-
-    episode = context["episode"]
-    stories = context["story_candidates"]
-    lines = [
-        f"{episode['title']}.",
-        "Here are the stories worth carrying into your day.",
-        "",
-    ]
-
-    for story in stories:
-        excerpt = first_sentence(story["source_excerpt"])
-        lines.extend(
-            [
-                f"Story {story['rank']}: {story['title']}.",
-                story["suggested_angle"],
-                excerpt,
-                "",
-            ]
-        )
-
-    lines.append("That is your Hearletter FM briefing.")
-    return "\n".join(lines).strip() + "\n"
 
 
 def build_polly_ssml(context: dict[str, Any]) -> str:
@@ -358,6 +337,7 @@ def script_event_payload(
     ssml_key: str,
     ssml_text_value: str,
     artifact_bucket: str,
+    notification_email: str | None = None,
 ) -> BriefingScriptPayload:
     """Create script payload metadata after writing a local or S3 SSML artifact."""
 
@@ -367,4 +347,5 @@ def script_event_payload(
         script=S3ObjectRef(bucket=artifact_bucket, key=ssml_key),
         estimated_duration_seconds=estimate_spoken_duration_seconds(ssml_text_value),
         voice=DEFAULT_POLLY_VOICE,
+        notification_email=notification_email,
     )

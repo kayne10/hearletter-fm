@@ -44,7 +44,11 @@ def summarize_lambda_event(event: dict[str, Any]) -> dict[str, Any]:
 
     records = event.get("Records")
     if isinstance(records, list):
-        summaries = [summarize_record(record) for record in records[:10] if isinstance(record, dict)]
+        summaries = [
+            summarize_record(record)
+            for record in records[:10]
+            if isinstance(record, dict)
+        ]
         return {
             "shape": "records",
             "record_count": len(records),
@@ -128,4 +132,3 @@ def truncate_value(value: Any, *, max_chars: int) -> str:
     if len(serialized) <= max_chars:
         return serialized
     return f"{serialized[:max_chars]}...<truncated {len(serialized) - max_chars} chars>"
-

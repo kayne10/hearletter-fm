@@ -62,6 +62,7 @@ class ParsedNewsletterPayload:
     received_at: str
     html: S3ObjectRef | None
     text: S3ObjectRef | None
+    notification_email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ class CleanedNewsletterPayload:
     clean_text: S3ObjectRef
     removed_sections: list[str]
     word_count: int
+    notification_email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +86,7 @@ class BriefingScriptPayload:
     script: S3ObjectRef
     estimated_duration_seconds: int | None
     voice: str
+    notification_email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,4 +101,4 @@ class GeneratedEpisodePayload:
     byte_length: int
     duration_seconds: int | None
     published_at: str
-
+    notification_email: str | None = None

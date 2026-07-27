@@ -98,11 +98,17 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     modules = PipelineModules(
-        email_parser=load_module("local_email_parser", REPO_ROOT / "services" / "email-parser" / "handler.py"),
+        email_parser=load_module(
+            "local_email_parser",
+            REPO_ROOT / "services" / "email-parser" / "handler.py",
+        ),
         cleaner=load_module(
             "local_newsletter_cleaner", REPO_ROOT / "services" / "newsletter-cleaner" / "handler.py"
         ),
-        summarizer=load_module("local_summarizer", REPO_ROOT / "services" / "summarizer" / "handler.py"),
+        summarizer=load_module(
+            "local_summarizer",
+            REPO_ROOT / "services" / "summarizer" / "handler.py",
+        ),
     )
 
     polly_synthesizer = None
@@ -268,6 +274,7 @@ def run_parser_stage(
         received_at=now,
         html=html_ref,
         text=text_ref,
+        notification_email=str(message.get("From", "unknown")),
     )
     event = EventEnvelope(
         event_id=new_id("evt"),
@@ -319,7 +326,11 @@ def run_cleaner_stage(
         "clean_text": {"bucket": LOCAL_BUCKET, "key": "02_newsletter_cleaner/clean_text.txt"},
         "removed_sections": removed_sections,
         "word_count": len(clean_text.split()),
-        "story_candidates": {"bucket": LOCAL_BUCKET, "key": "02_newsletter_cleaner/story_candidates.json"},
+        "story_candidates": {
+            "bucket": LOCAL_BUCKET,
+            "key": "02_newsletter_cleaner/story_candidates.json",
+        },
+        "notification_email": parsed_event.payload.notification_email,
     }
     event = EventEnvelope(
         event_id=new_id("evt"),
@@ -376,6 +387,7 @@ def run_context_stage(
         ssml_key="03_podcast_context/polly_ssml.xml",
         ssml_text_value=polly_ssml,
         artifact_bucket=LOCAL_BUCKET,
+        notification_email=payload.get("notification_email"),
     )
     event = EventEnvelope(
         event_id=new_id("evt"),
@@ -467,7 +479,10 @@ def looks_like_email(raw_bytes: bytes) -> bool:
     """Heuristically detect raw RFC 5322/MIME email samples."""
 
     head = raw_bytes[:4096].decode("utf-8", errors="ignore").lower()
-    return any(header in head for header in ("return-path:", "received:", "mime-version:", "message-id:"))
+    return any(
+        header in head
+        for header in ("return-path:", "received:", "mime-version:", "message-id:")
+    )
 
 
 def synthetic_message(sample_path: Path) -> Message:
@@ -504,7 +519,10 @@ def write_optional_text(path: Path, value: str | None, key: str) -> S3ObjectRef 
 
 
 def write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, default=json_default, indent=2, sort_keys=True), encoding="utf-8")
+    path.write_text(
+        json.dumps(value, default=json_default, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
 
 def json_default(value: object) -> object:
@@ -530,7 +548,13 @@ def default_output_dir(input_path: Path) -> Path:
     return REPO_ROOT / "artifacts" / "local" / f"{safe_sample_name(Path(stem))}-{timestamp}"
 
 
-def local_ses_event(*, message_id: str, source: str, recipient: str, subject: str) -> dict[str, Any]:
+def local_ses_event(
+    *,
+    message_id: str,
+    source: str,
+    recipient: str,
+    subject: str,
+) -> dict[str, Any]:
     return {
         "Records": [
             {

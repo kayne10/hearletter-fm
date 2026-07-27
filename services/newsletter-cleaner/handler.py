@@ -37,7 +37,10 @@ JUNK_LINE_PATTERNS = [
 URL_LINE_RE = re.compile(r"^<?https?://\S+>?$")
 MARKDOWN_LINK_URL_RE = re.compile(r"\n?<https?://[^>\s]+>")
 IMAGE_MARKER_RE = re.compile(r"\[image:[^\]]+\]", re.IGNORECASE)
-FORWARDED_HEADER_RE = re.compile(r"^(---------- Forwarded message ---------|From:|Date:|Subject:|To:)", re.IGNORECASE)
+FORWARDED_HEADER_RE = re.compile(
+    r"^(---------- Forwarded message ---------|From:|Date:|Subject:|To:)",
+    re.IGNORECASE,
+)
 SECTION_STOP_TITLES = {
     "reader poll",
     "calendar",
@@ -69,7 +72,10 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         for output_event in output_events:
             sqs_client.send_message(QueueUrl=queue_url, MessageBody=dumps_event(output_event))
 
-    return {"processed": len(output_events), "events": [output_event.to_dict() for output_event in output_events]}
+    return {
+        "processed": len(output_events),
+        "events": [output_event.to_dict() for output_event in output_events],
+    }
 
 
 def process_event(
@@ -120,6 +126,7 @@ def process_event(
         clean_text=S3ObjectRef(bucket=artifact_bucket, key=clean_key),
         removed_sections=removed_sections,
         word_count=word_count,
+        notification_email=payload.get("notification_email"),
     )
 
     return EventEnvelope(
@@ -405,9 +412,7 @@ def should_start_new_paragraph(previous: str, current: str) -> bool:
         return True
     if previous.endswith((".", "?", "!", "…", ":")):
         return True
-    if looks_like_heading(current):
-        return True
-    return False
+    return bool(looks_like_heading(current))
 
 
 def looks_like_heading(value: str) -> bool:
@@ -490,7 +495,11 @@ def matching_agenda_item(title: str, paragraph: str, agenda: list[str]) -> str |
 def token_overlap(needle: str, haystack: str) -> int:
     """Count meaningful token overlap between two strings."""
 
-    tokens = {token for token in re.findall(r"[a-zA-Z][a-zA-Z0-9']+", needle.lower()) if len(token) > 3}
+    tokens = {
+        token
+        for token in re.findall(r"[a-zA-Z][a-zA-Z0-9']+", needle.lower())
+        if len(token) > 3
+    }
     return sum(1 for token in tokens if token in haystack)
 
 

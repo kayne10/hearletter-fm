@@ -5,7 +5,7 @@ Hearletter FM turns forwarded email newsletters into a private, podcast-like mor
 Core flow:
 
 ```text
-Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> RSS
+Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> RSS + email link
 ```
 
 This repository is intentionally serverless-first and event-driven. The MVP favors small Lambda services connected by SQS queues, S3 for durable artifacts, and a private RSS feed that podcast apps can subscribe to.
@@ -27,6 +27,7 @@ hearletter-fm/
 │   ├── summarizer/       # Cleaned -> Spoken script
 │   ├── tts/              # Script -> MP3
 │   ├── rss-generator/    # Episode metadata -> feed.xml
+│   ├── notifier/         # Episode metadata -> completion email
 │   └── shared/           # Lambda/service helpers
 └── tests/
 ```
@@ -109,6 +110,15 @@ python3 scripts/run_local_pipeline.py \
 ```
 
 MP3 files are written to each sample's `04_polly_audio/episode.mp3`.
+
+## Emailing Finished MP3 Links
+
+The parser carries the SES `mail.source` address through the pipeline as `notification_email`. After TTS writes an MP3, the TTS Lambda publishes the generated episode event to both:
+
+- `generated-episode`, consumed by the RSS generator
+- `notification-email`, consumed by the notifier
+
+The notifier sends a SES email with a presigned S3 link to the private MP3. Terraform defaults the sender to `no-reply@<domain_name>`; override it with `notification_from_email` if you verify a different sender identity.
 
 ## Lambda Event Troubleshooting
 

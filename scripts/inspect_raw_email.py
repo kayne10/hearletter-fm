@@ -67,7 +67,10 @@ def print_part(
 
     payload_size = len(part.get_payload(decode=True) or b"")
     filename_suffix = f" filename={filename!r}" if filename else ""
-    print(f"  [{index}] {content_type} disposition={disposition} bytes={payload_size}{filename_suffix}")
+    print(
+        f"  [{index}] {content_type} "
+        f"disposition={disposition} bytes={payload_size}{filename_suffix}"
+    )
 
     if content_type.startswith("text/"):
         content = get_text_content(part)

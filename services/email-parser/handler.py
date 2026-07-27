@@ -79,6 +79,7 @@ def parse_ses_event(
         received_at=now,
         html=html_ref,
         text=text_ref,
+        notification_email=extract_notification_email(ses_mail),
     )
     return EventEnvelope(
         event_id=new_id("evt"),
@@ -112,6 +113,13 @@ def resolve_raw_email_ref(record: dict[str, Any], *, env: dict[str, str]) -> S3O
     raw_prefix = env.get("RAW_EMAIL_PREFIX", DEFAULT_RAW_EMAIL_PREFIX)
     normalized_prefix = raw_prefix if raw_prefix.endswith("/") else f"{raw_prefix}/"
     return S3ObjectRef(bucket=raw_bucket, key=f"{normalized_prefix}{ses_mail['messageId']}")
+
+
+def extract_notification_email(ses_mail: dict[str, Any]) -> str | None:
+    """Return the email address that should receive completion notifications."""
+
+    source = ses_mail.get("source")
+    return str(source) if source else None
 
 
 def get_s3_object_bytes(s3_client: Any, ref: S3ObjectRef) -> bytes:
