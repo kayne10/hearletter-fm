@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any
@@ -52,8 +53,16 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     import boto3
 
     log_lambda_event("newsletter-cleaner", event)
+    s3_client = boto3.client("s3")
     sqs_client = boto3.client("sqs")
-    output_events = [process_event(pipeline_event) for pipeline_event in iter_pipeline_events(event)]
+    output_events = [
+        process_event(
+            pipeline_event,
+            s3_client=s3_client,
+            artifact_bucket=os.environ.get("ARTIFACT_BUCKET"),
+        )
+        for pipeline_event in iter_pipeline_events(event)
+    ]
 
     queue_url = os.environ.get("CLEANED_QUEUE_URL")
     if queue_url:
@@ -63,7 +72,12 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     return {"processed": len(output_events), "events": [output_event.to_dict() for output_event in output_events]}
 
 
-def process_event(event: dict[str, Any]) -> EventEnvelope[CleanedNewsletterPayload]:
+def process_event(
+    event: dict[str, Any],
+    *,
+    s3_client: Any | None = None,
+    artifact_bucket: str | None = None,
+) -> EventEnvelope[CleanedNewsletterPayload]:
     """Clean a single parsed-newsletter pipeline event."""
 
     now = utc_now_iso()
@@ -73,12 +87,39 @@ def process_event(event: dict[str, Any]) -> EventEnvelope[CleanedNewsletterPaylo
     subject = str(payload.get("subject", "Untitled newsletter"))
 
     clean_key = f"cleaned/{tenant_id}/{newsletter_id}/content.txt"
+    stories_key = f"cleaned/{tenant_id}/{newsletter_id}/story_candidates.json"
+    removed_sections: list[str] = []
+    word_count = 0
+
+    if s3_client is not None and artifact_bucket:
+        html = read_optional_text_ref(s3_client, payload.get("html"))
+        text = read_optional_text_ref(s3_client, payload.get("text"))
+        clean_text, removed_sections = clean_newsletter_content(html=html, text=text)
+        story_candidates = extract_story_candidates(clean_text)
+        word_count = len(clean_text.split())
+        put_text(
+            s3_client,
+            bucket=artifact_bucket,
+            key=clean_key,
+            body=clean_text,
+            content_type="text/plain; charset=utf-8",
+        )
+        put_text(
+            s3_client,
+            bucket=artifact_bucket,
+            key=stories_key,
+            body=json.dumps(story_candidates, indent=2, sort_keys=True),
+            content_type="application/json; charset=utf-8",
+        )
+    else:
+        artifact_bucket = "ARTIFACT_BUCKET"
+
     clean_payload = CleanedNewsletterPayload(
         title=subject,
         source=str(payload.get("sender")) if payload.get("sender") else None,
-        clean_text=S3ObjectRef(bucket="ARTIFACT_BUCKET", key=clean_key),
-        removed_sections=[],
-        word_count=0,
+        clean_text=S3ObjectRef(bucket=artifact_bucket, key=clean_key),
+        removed_sections=removed_sections,
+        word_count=word_count,
     )
 
     return EventEnvelope(
@@ -90,6 +131,35 @@ def process_event(event: dict[str, Any]) -> EventEnvelope[CleanedNewsletterPaylo
         newsletter_id=newsletter_id,
         occurred_at=now,
         payload=clean_payload,
+    )
+
+
+def read_optional_text_ref(s3_client: Any, ref: Any) -> str | None:
+    """Read a text artifact from an S3 ref dictionary if present."""
+
+    if not ref:
+        return None
+    bucket = str(ref["bucket"])
+    key = str(ref["key"])
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    return response["Body"].read().decode("utf-8")
+
+
+def put_text(
+    s3_client: Any,
+    *,
+    bucket: str,
+    key: str,
+    body: str,
+    content_type: str,
+) -> None:
+    """Write a UTF-8 text artifact to S3."""
+
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body.encode("utf-8"),
+        ContentType=content_type,
     )
 
 

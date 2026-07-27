@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from html import escape
+import json
 import os
 import re
 from typing import Any
@@ -28,8 +29,16 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     import boto3
 
     log_lambda_event("summarizer", event)
+    s3_client = boto3.client("s3")
     sqs_client = boto3.client("sqs")
-    output_events = [process_event(pipeline_event) for pipeline_event in iter_pipeline_events(event)]
+    output_events = [
+        process_event(
+            pipeline_event,
+            s3_client=s3_client,
+            artifact_bucket=os.environ.get("ARTIFACT_BUCKET"),
+        )
+        for pipeline_event in iter_pipeline_events(event)
+    ]
 
     queue_url = os.environ.get("SCRIPT_QUEUE_URL")
     if queue_url:
@@ -39,21 +48,78 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     return {"processed": len(output_events), "events": [output_event.to_dict() for output_event in output_events]}
 
 
-def process_event(event: dict[str, Any]) -> EventEnvelope[BriefingScriptPayload]:
+def process_event(
+    event: dict[str, Any],
+    *,
+    s3_client: Any | None = None,
+    artifact_bucket: str | None = None,
+) -> EventEnvelope[BriefingScriptPayload]:
     """Create a briefing-scripted event from a cleaned-newsletter event."""
 
     now = utc_now_iso()
     tenant_id = str(event["tenant_id"])
     newsletter_id = str(event["newsletter_id"])
-    script_key = f"scripts/{tenant_id}/{newsletter_id}/script.txt"
+    payload = event["payload"]
+    ssml_key = f"scripts/{tenant_id}/{newsletter_id}/polly_ssml.xml"
 
-    payload = BriefingScriptPayload(
-        mode=ContentMode.MORNING_BRIEFING,
-        title=f"Morning Briefing - {now[:10]}",
-        script=S3ObjectRef(bucket="ARTIFACT_BUCKET", key=script_key),
-        estimated_duration_seconds=None,
-        voice=DEFAULT_VOICE,
-    )
+    if s3_client is not None and artifact_bucket:
+        clean_text_ref = payload["clean_text"]
+        clean_text = read_text_from_s3(
+            s3_client,
+            S3ObjectRef(bucket=str(clean_text_ref["bucket"]), key=str(clean_text_ref["key"])),
+        )
+        story_candidates = read_story_candidates(
+            s3_client,
+            bucket=str(clean_text_ref["bucket"]),
+            key=f"cleaned/{tenant_id}/{newsletter_id}/story_candidates.json",
+        )
+        context = build_podcast_context(
+            title=str(payload.get("title", "Untitled newsletter")),
+            source=payload.get("source"),
+            clean_text=clean_text,
+            story_candidates=story_candidates,
+            episode_date=now[:10],
+        )
+        polly_ssml = build_polly_ssml(context)
+        prompt = build_morning_briefing_prompt(clean_text)
+        put_text(
+            s3_client,
+            bucket=artifact_bucket,
+            key=f"scripts/{tenant_id}/{newsletter_id}/podcast_context.json",
+            body=json.dumps(context, indent=2, sort_keys=True),
+            content_type="application/json; charset=utf-8",
+        )
+        put_text(
+            s3_client,
+            bucket=artifact_bucket,
+            key=f"scripts/{tenant_id}/{newsletter_id}/agent_prompt.txt",
+            body=prompt,
+            content_type="text/plain; charset=utf-8",
+        )
+        put_text(
+            s3_client,
+            bucket=artifact_bucket,
+            key=ssml_key,
+            body=polly_ssml,
+            content_type="application/ssml+xml; charset=utf-8",
+        )
+        script_payload = script_event_payload(
+            tenant_id=tenant_id,
+            newsletter_id=newsletter_id,
+            title=context["episode"]["title"],
+            ssml_key=ssml_key,
+            ssml_text_value=polly_ssml,
+            artifact_bucket=artifact_bucket,
+        )
+    else:
+        script_payload = BriefingScriptPayload(
+            mode=ContentMode.MORNING_BRIEFING,
+            title=f"Morning Briefing - {now[:10]}",
+            script=S3ObjectRef(bucket="ARTIFACT_BUCKET", key=ssml_key),
+            estimated_duration_seconds=None,
+            voice=DEFAULT_POLLY_VOICE,
+        )
+
     return EventEnvelope(
         event_id=new_id("evt"),
         event_type="briefing.scripted",
@@ -62,7 +128,40 @@ def process_event(event: dict[str, Any]) -> EventEnvelope[BriefingScriptPayload]
         tenant_id=tenant_id,
         newsletter_id=newsletter_id,
         occurred_at=now,
-        payload=payload,
+        payload=script_payload,
+    )
+
+
+def read_text_from_s3(s3_client: Any, ref: S3ObjectRef) -> str:
+    """Read a UTF-8 text artifact from S3."""
+
+    response = s3_client.get_object(Bucket=ref.bucket, Key=ref.key)
+    return response["Body"].read().decode("utf-8")
+
+
+def read_story_candidates(s3_client: Any, *, bucket: str, key: str) -> list[dict[str, Any]]:
+    """Read story candidates from S3."""
+
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    value = json.loads(response["Body"].read().decode("utf-8"))
+    return value if isinstance(value, list) else []
+
+
+def put_text(
+    s3_client: Any,
+    *,
+    bucket: str,
+    key: str,
+    body: str,
+    content_type: str,
+) -> None:
+    """Write a UTF-8 text artifact to S3."""
+
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body.encode("utf-8"),
+        ContentType=content_type,
     )
 
 

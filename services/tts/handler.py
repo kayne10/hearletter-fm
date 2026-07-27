@@ -83,6 +83,7 @@ def process_event(
 
     if s3_client is not None and polly_synthesizer is not None:
         ssml_ref = event["payload"]["script"]
+        validate_script_ref(ssml_ref)
         ssml = read_text_from_s3(
             s3_client,
             S3ObjectRef(bucket=str(ssml_ref["bucket"]), key=str(ssml_ref["key"])),
@@ -123,3 +124,12 @@ def read_text_from_s3(s3_client: Any, ref: S3ObjectRef) -> str:
 
     response = s3_client.get_object(Bucket=ref.bucket, Key=ref.key)
     return response["Body"].read().decode("utf-8")
+
+
+def validate_script_ref(ref: Any) -> None:
+    """Fail fast for placeholder artifact pointers from stale/upstream events."""
+
+    bucket = str(ref.get("bucket", "")) if isinstance(ref, dict) else ""
+    key = str(ref.get("key", "")) if isinstance(ref, dict) else ""
+    if not bucket or bucket == "ARTIFACT_BUCKET":
+        raise RuntimeError(f"Invalid TTS script artifact bucket: bucket={bucket!r}, key={key!r}")
