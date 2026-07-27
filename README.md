@@ -70,22 +70,45 @@ python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/ema
 
 ## Running The Pipeline Locally
 
-Use the raw email fixture to generate stage-by-stage files without invoking AWS:
+Use local samples to generate stage-by-stage files without invoking AWS:
 
 ```bash
-python3 scripts/run_local_pipeline.py --raw-email tests/fixtures/raw_email
+python3 scripts/run_local_pipeline.py --input data --output-dir artifacts/local/latest --clean-output
 ```
 
-The runner writes a timestamped folder under `artifacts/local/` with each stage's input and output:
+You can also run a single raw MIME or decoded text file:
+
+```bash
+python3 scripts/run_local_pipeline.py --input tests/fixtures/raw_email
+python3 scripts/run_local_pipeline.py --input data/01_email_with_body.txt
+```
+
+The runner writes per-sample folders under `artifacts/local/` with each stage's input and output:
 
 - `01_email_parser/body.txt`
 - `01_email_parser/body.html`
 - `02_newsletter_cleaner/clean_text.txt`
 - `02_newsletter_cleaner/story_candidates.json`
-- `03_summarizer/podcast_context.json`
-- `03_summarizer/agent_prompt.txt`
-- `03_summarizer/script_draft.txt`
-- `04_tts_request/tts_request.json`
+- `03_podcast_context/podcast_context.json`
+- `03_podcast_context/agent_prompt.txt`
+- `03_podcast_context/polly_ssml.xml`
+
+This local runner intentionally stops before audio generation. The goal is to master newsletter parsing, cleanup, story extraction, and Amazon Polly-ready SSML before invoking a TTS provider.
+
+To synthesize a local MP3 with Amazon Polly:
+
+```bash
+python3 scripts/run_local_pipeline.py \
+  --input data \
+  --output-dir artifacts/local/latest \
+  --clean-output \
+  --synthesize-audio \
+  --polly-region us-east-1 \
+  --polly-engine generative \
+  --polly-voice-id Joanna
+```
+
+MP3 files are written to each sample's `04_polly_audio/episode.mp3`.
 
 ## Lambda Event Troubleshooting
 

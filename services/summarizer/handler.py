@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from html import escape
 import os
+import re
 from typing import Any
 
 from hearletter_domain.models import ContentMode, S3ObjectRef
@@ -13,6 +15,7 @@ from hearletter_shared.lambda_events import iter_pipeline_events, log_lambda_eve
 from hearletter_utils.text import estimate_spoken_duration_seconds
 
 DEFAULT_VOICE = "alloy"
+DEFAULT_POLLY_VOICE = "Joanna"
 
 
 def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
@@ -148,6 +151,43 @@ def build_script_draft(context: dict[str, Any]) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def build_polly_ssml(context: dict[str, Any]) -> str:
+    """Create Amazon Polly SSML for a podcast-like morning briefing."""
+
+    episode = context["episode"]
+    stories = context["story_candidates"]
+    parts = [
+        '<speak>',
+        '  <prosody rate="92%">',
+        f'    <p><s>{ssml_text(episode["title"])}.</s></p>',
+        '    <break time="650ms"/>',
+        '    <p><s>Here are the stories worth carrying into your day.</s></p>',
+        '    <break time="500ms"/>',
+    ]
+
+    for story in stories:
+        title = ssml_text(story["title"].rstrip("."))
+        excerpt = ssml_text(clean_spoken_sentence(first_sentence(story["source_excerpt"])))
+        parts.extend(
+            [
+                f'    <p><s>{transition_for_rank(story["rank"])}: {title}.</s></p>',
+                '    <break time="350ms"/>',
+                f'    <p><s>The key thing to know: {excerpt}</s></p>',
+                '    <break time="700ms"/>',
+            ]
+        )
+
+    parts.extend(
+        [
+            '    <p><s>That is your Hearletter FM briefing.</s></p>',
+            '  </prosody>',
+            '</speak>',
+            '',
+        ]
+    )
+    return "\n".join(parts)
+
+
 def suggested_angle(story: dict[str, Any]) -> str:
     """Create a local placeholder angle an AI writer can improve."""
 
@@ -166,21 +206,66 @@ def first_sentence(value: str) -> str:
     return value[:280].strip()
 
 
+def clean_spoken_sentence(value: str) -> str:
+    """Normalize source text before placing it in SSML."""
+
+    normalized = value.replace("*", "")
+    normalized = strip_emoji(normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = normalized.replace(" ,", ",")
+    normalized = normalized.replace(" .", ".")
+    return normalized.strip()
+
+
+def ssml_text(value: str) -> str:
+    """Escape text content for SSML."""
+
+    return escape(clean_spoken_sentence(value), quote=False)
+
+
+def transition_for_rank(rank: int) -> str:
+    """Return a natural transition for a ranked story."""
+
+    transitions = {
+        1: "First up",
+        2: "Next",
+        3: "Also worth knowing",
+        4: "Looking ahead",
+        5: "And finally",
+    }
+    return transitions.get(rank, f"Story {rank}")
+
+
+def strip_emoji(value: str) -> str:
+    """Remove symbols that Polly may spell awkwardly."""
+
+    return "".join(char for char in value if not is_emoji_or_symbol(char))
+
+
+def is_emoji_or_symbol(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        0x1F000 <= codepoint <= 0x1FAFF
+        or 0x2600 <= codepoint <= 0x27BF
+        or 0x1F1E6 <= codepoint <= 0x1F1FF
+    )
+
+
 def script_event_payload(
     *,
     tenant_id: str,
     newsletter_id: str,
     title: str,
-    script_key: str,
-    script_text: str,
+    ssml_key: str,
+    ssml_text_value: str,
     artifact_bucket: str,
 ) -> BriefingScriptPayload:
-    """Create script payload metadata after writing a local or S3 script artifact."""
+    """Create script payload metadata after writing a local or S3 SSML artifact."""
 
     return BriefingScriptPayload(
         mode=ContentMode.MORNING_BRIEFING,
         title=title,
-        script=S3ObjectRef(bucket=artifact_bucket, key=script_key),
-        estimated_duration_seconds=estimate_spoken_duration_seconds(script_text),
-        voice=DEFAULT_VOICE,
+        script=S3ObjectRef(bucket=artifact_bucket, key=ssml_key),
+        estimated_duration_seconds=estimate_spoken_duration_seconds(ssml_text_value),
+        voice=DEFAULT_POLLY_VOICE,
     )

@@ -239,6 +239,13 @@ resource "aws_iam_role_policy" "lambda_pipeline" {
         ]
         Resource = "*"
       },
+      {
+        Effect = "Allow"
+        Action = [
+          "polly:SynthesizeSpeech",
+        ]
+        Resource = "*"
+      },
     ]
   })
 }
@@ -267,7 +274,10 @@ resource "aws_lambda_function" "service" {
       CLEANED_QUEUE_URL    = aws_sqs_queue.pipeline["cleaned-newsletter"].url
       SCRIPT_QUEUE_URL     = aws_sqs_queue.pipeline["briefing-script"].url
       EPISODE_QUEUE_URL    = aws_sqs_queue.pipeline["generated-episode"].url
-      TTS_PROVIDER         = "openai"
+      TTS_PROVIDER         = "polly"
+      POLLY_REGION         = "us-east-1"
+      POLLY_ENGINE         = "generative"
+      POLLY_VOICE_ID       = "Joanna"
       LOG_FULL_EVENTS      = "false"
       POWERTOOLS_SERVICE   = each.key
       POWERTOOLS_LOG_LEVEL = "INFO"
