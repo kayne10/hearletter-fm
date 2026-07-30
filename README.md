@@ -5,7 +5,7 @@ Hearletter FM turns forwarded email newsletters into a private, podcast-like mor
 Core flow:
 
 ```text
-Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> RSS + email link
+Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> MP3 + email link
 ```
 
 This repository is intentionally serverless-first and event-driven. The MVP favors small Lambda services connected by SQS queues, S3 for durable artifacts, and a private RSS feed that podcast apps can subscribe to.
@@ -94,7 +94,7 @@ The runner writes per-sample folders under `artifacts/local/` with each stage's 
 - `03_podcast_context/agent_prompt.txt`
 - `03_podcast_context/polly_ssml.xml`
 
-This local runner intentionally stops before audio generation. The goal is to master newsletter parsing, cleanup, story extraction, and Amazon Polly-ready SSML before invoking a TTS provider.
+This local runner intentionally stops before audio generation by default. The goal is to master newsletter parsing, cleanup, story extraction, and provider-ready script context before invoking a TTS provider.
 
 To synthesize a local MP3 with Amazon Polly:
 
@@ -110,6 +110,29 @@ python3 scripts/run_local_pipeline.py \
 ```
 
 MP3 files are written to each sample's `04_polly_audio/episode.mp3`.
+
+## TTS Providers
+
+The TTS Lambda supports a provider switch with `TTS_PROVIDER`:
+
+- `polly` is the code default and uses Amazon Polly SSML.
+- `openai` converts the generated SSML to plain text and calls OpenAI speech synthesis.
+
+Terraform currently sets `tts_provider = "openai"` so you can try OpenAI first. The default OpenAI config is:
+
+```text
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_TTS_VOICE=marin
+OPENAI_TTS_RESPONSE_FORMAT=mp3
+```
+
+Create an AWS Secrets Manager secret containing either the raw OpenAI API key or JSON like `{"api_key":"sk-..."}`, then pass its ARN:
+
+```bash
+terraform plan \
+  -var="tts_provider=openai" \
+  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:123456789012:secret:hearletter/openai-api-key-AbCdEf"
+```
 
 ## Emailing Finished MP3 Links
 
@@ -136,6 +159,19 @@ LOG_FULL_EVENTS=true
 ```
 
 Turn it back off after debugging to avoid noisy CloudWatch logs.
+
+## Deployment
+```bash
+python scripts/package_lambdas.py
+
+cd infra/terraform
+terraform apply \
+  -var="tts_provider=openai" \
+  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:112894377436:secret:hearletter/openai-api-key-jxNQKi" \
+  -var="aws_region=us-east-2" \
+  -var="domain_name=beta.hearletter.fm" \
+  -var="inbound_recipient=listen@beta.hearletter.fm"
+```
 
 ## Architecture Docs
 

@@ -45,8 +45,11 @@ terraform plan \
   -var="project_name=hearletter-fm" \
   -var="domain_name=example.com" \
   -var="inbound_recipient=listen@example.com" \
-  -var="notification_from_email=no-reply@example.com"
+  -var="notification_from_email=no-reply@example.com" \
+  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:123456789012:secret:hearletter/openai-api-key-AbCdEf"
 ```
 
 SES inbound receiving is region-specific. Deploy this stack in a region that supports SES email receiving.
 The notification sender must be a verified SES identity in the deployment region, unless your account is out of the SES sandbox and the domain identity covers it.
+
+The deployed Terraform default is `tts_provider = "openai"` for evaluation. Set `tts_provider = "polly"` to switch back to Amazon Polly without changing Lambda code.

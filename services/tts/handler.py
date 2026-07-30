@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from hearletter_domain.models import S3ObjectRef
 from hearletter_events.contracts import EventEnvelope, GeneratedEpisodePayload, new_id, utc_now_iso
 from hearletter_shared.event_codec import dumps_event
 from hearletter_shared.lambda_events import iter_pipeline_events, log_lambda_event
+from hearletter_shared.openai_tts import (
+    DEFAULT_OPENAI_TTS_INSTRUCTIONS,
+    DEFAULT_OPENAI_TTS_MODEL,
+    DEFAULT_OPENAI_TTS_RESPONSE_FORMAT,
+    DEFAULT_OPENAI_TTS_VOICE,
+    OpenAITTSConfig,
+    build_openai_tts_synthesizer,
+    secret_value_to_api_key,
+)
 from hearletter_shared.polly import (
     DEFAULT_POLLY_ENGINE,
     DEFAULT_POLLY_REGION,
@@ -18,21 +26,7 @@ from hearletter_shared.polly import (
     build_polly_synthesizer,
 )
 
-
-@dataclass(frozen=True, slots=True)
-class SynthesizedAudio:
-    """Result returned by a TTS provider."""
-
-    content: bytes
-    mime_type: str
-    duration_seconds: int | None = None
-
-
-class TTSProvider(Protocol):
-    """Provider contract for pluggable TTS backends."""
-
-    def synthesize(self, *, text: str, voice: str) -> SynthesizedAudio:
-        """Synthesize speech from text."""
+DEFAULT_TTS_PROVIDER = "polly"
 
 
 def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
@@ -44,16 +38,12 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     boto3_session = boto3.Session()
     s3_client = boto3_session.client("s3")
     sqs_client = boto3.client("sqs")
-    polly_synthesizer = build_polly_synthesizer(
+    tts_synthesizer = build_tts_synthesizer(
+        env=os.environ,
         boto3_session=boto3_session,
-        config=PollySynthesisConfig(
-            region_name=os.environ.get("POLLY_REGION", DEFAULT_POLLY_REGION),
-            engine=os.environ.get("POLLY_ENGINE", DEFAULT_POLLY_ENGINE),
-            voice_id=os.environ.get("POLLY_VOICE_ID", DEFAULT_POLLY_VOICE_ID),
-        ),
     )
     output_events = [
-        process_event(pipeline_event, s3_client=s3_client, polly_synthesizer=polly_synthesizer)
+        process_event(pipeline_event, s3_client=s3_client, tts_synthesizer=tts_synthesizer)
         for pipeline_event in iter_pipeline_events(event)
     ]
 
@@ -71,7 +61,7 @@ def process_event(
     event: dict[str, Any],
     *,
     s3_client: Any | None = None,
-    polly_synthesizer: Any | None = None,
+    tts_synthesizer: Any | None = None,
 ) -> EventEnvelope[GeneratedEpisodePayload]:
     """Create a generated-episode event from a briefing-scripted event."""
 
@@ -83,14 +73,14 @@ def process_event(
     title = str(event["payload"].get("title", f"Morning Briefing - {now[:10]}"))
     byte_length = 0
 
-    if s3_client is not None and polly_synthesizer is not None:
+    if s3_client is not None and tts_synthesizer is not None:
         ssml_ref = event["payload"]["script"]
         validate_script_ref(ssml_ref)
         ssml = read_text_from_s3(
             s3_client,
             S3ObjectRef(bucket=str(ssml_ref["bucket"]), key=str(ssml_ref["key"])),
         )
-        audio = polly_synthesizer.synthesize_ssml(ssml)
+        audio = tts_synthesizer.synthesize_ssml(ssml)
         byte_length = len(audio.content)
         s3_client.put_object(
             Bucket=os.environ["AUDIO_BUCKET"],
@@ -146,3 +136,51 @@ def output_queue_urls(env: Any) -> list[str]:
         for name in ("EPISODE_QUEUE_URL", "NOTIFICATION_QUEUE_URL")
         if env.get(name)
     ]
+
+
+def build_tts_synthesizer(*, env: Any, boto3_session: Any) -> Any:
+    """Build the configured TTS provider."""
+
+    provider = str(env.get("TTS_PROVIDER", DEFAULT_TTS_PROVIDER)).strip().lower()
+    if provider == "polly":
+        return build_polly_synthesizer(
+            boto3_session=boto3_session,
+            config=PollySynthesisConfig(
+                region_name=env.get("POLLY_REGION", DEFAULT_POLLY_REGION),
+                engine=env.get("POLLY_ENGINE", DEFAULT_POLLY_ENGINE),
+                voice_id=env.get("POLLY_VOICE_ID", DEFAULT_POLLY_VOICE_ID),
+            ),
+        )
+    if provider == "openai":
+        return build_openai_tts_synthesizer(
+            config=OpenAITTSConfig(
+                api_key=resolve_openai_api_key(env=env, boto3_session=boto3_session),
+                model=env.get("OPENAI_TTS_MODEL", DEFAULT_OPENAI_TTS_MODEL),
+                voice=env.get("OPENAI_TTS_VOICE", DEFAULT_OPENAI_TTS_VOICE),
+                response_format=env.get(
+                    "OPENAI_TTS_RESPONSE_FORMAT",
+                    DEFAULT_OPENAI_TTS_RESPONSE_FORMAT,
+                ),
+                instructions=env.get("OPENAI_TTS_INSTRUCTIONS", DEFAULT_OPENAI_TTS_INSTRUCTIONS),
+            )
+        )
+    raise ValueError(f"Unsupported TTS_PROVIDER: {provider}")
+
+
+def resolve_openai_api_key(*, env: Any, boto3_session: Any) -> str:
+    """Resolve the OpenAI API key from env or Secrets Manager."""
+
+    direct_value = env.get("OPENAI_API_KEY")
+    if direct_value:
+        return str(direct_value)
+
+    secret_arn = env.get("OPENAI_API_KEY_SECRET_ARN")
+    if not secret_arn:
+        raise RuntimeError("OpenAI TTS requires OPENAI_API_KEY or OPENAI_API_KEY_SECRET_ARN")
+
+    secrets_client = boto3_session.client("secretsmanager")
+    response = secrets_client.get_secret_value(SecretId=str(secret_arn))
+    secret_value = response.get("SecretString")
+    if not secret_value:
+        raise RuntimeError("OpenAI API key secret must contain SecretString")
+    return secret_value_to_api_key(str(secret_value))

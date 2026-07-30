@@ -49,3 +49,38 @@ variable "audio_url_ttl_seconds" {
   type        = number
   default     = 604800
 }
+
+variable "tts_provider" {
+  description = "TTS provider used by the tts Lambda. Code defaults to polly; this stack currently deploys openai."
+  type        = string
+  default     = "openai"
+
+  validation {
+    condition     = contains(["polly", "openai"], var.tts_provider)
+    error_message = "tts_provider must be either polly or openai."
+  }
+}
+
+variable "openai_api_key_secret_arn" {
+  description = "Secrets Manager secret ARN containing the OpenAI API key as plain text or JSON with api_key."
+  type        = string
+  default     = ""
+}
+
+variable "openai_tts_model" {
+  description = "OpenAI speech model."
+  type        = string
+  default     = "gpt-4o-mini-tts"
+}
+
+variable "openai_tts_voice" {
+  description = "OpenAI speech voice."
+  type        = string
+  default     = "marin"
+}
+
+variable "openai_tts_instructions" {
+  description = "Style instructions sent to OpenAI TTS."
+  type        = string
+  default     = "Sound like a warm, natural morning podcast host. Keep the delivery conversational, clear, lightly energetic, and never salesy."
+}
