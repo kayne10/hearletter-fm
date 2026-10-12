@@ -107,13 +107,12 @@ locals {
         view   = "timeSeries"
         stat   = "Sum"
         period = 300
-        metrics = flatten([
-          for fn in local.pipeline_lambdas : [
-            ["AWS/Lambda", "Invocations", "FunctionName", fn, { label = "${fn} invocations" }],
-            [".", "Errors", ".", ".", { label = "${fn} errors" }],
-            [".", "Throttles", ".", ".", { label = "${fn} throttles" }],
-          ]
-        ])
+        # concat (not flatten): each metric row must stay a list.
+        metrics = concat(
+          [for fn in local.pipeline_lambdas : ["AWS/Lambda", "Invocations", "FunctionName", fn, { label = "${fn} invocations" }]],
+          [for fn in local.pipeline_lambdas : ["AWS/Lambda", "Errors", "FunctionName", fn, { label = "${fn} errors" }]],
+          [for fn in local.pipeline_lambdas : ["AWS/Lambda", "Throttles", "FunctionName", fn, { label = "${fn} throttles" }]],
+        )
       }
     },
     {
@@ -133,12 +132,10 @@ locals {
             { label = "producer timeout", value = local.episode_producer_timeout * 1000 },
           ]
         }
-        metrics = flatten([
-          for fn in local.pipeline_lambdas : [
-            ["AWS/Lambda", "Duration", "FunctionName", fn, { stat = "Average", label = "${fn} avg" }],
-            [".", ".", ".", ".", { stat = "Maximum", label = "${fn} max" }],
-          ]
-        ])
+        metrics = concat(
+          [for fn in local.pipeline_lambdas : ["AWS/Lambda", "Duration", "FunctionName", fn, { stat = "Average", label = "${fn} avg" }]],
+          [for fn in local.pipeline_lambdas : ["AWS/Lambda", "Duration", "FunctionName", fn, { stat = "Maximum", label = "${fn} max" }]],
+        )
       }
     },
     {
@@ -236,12 +233,10 @@ locals {
         view   = "timeSeries"
         stat   = "Sum"
         period = 300
-        metrics = flatten([
-          for name, bucket in local.pipeline_buckets : [
-            ["AWS/S3", "PutRequests", "BucketName", bucket, "FilterId", local.s3_request_metrics_filter, { label = "${name} PUT" }],
-            [".", "GetRequests", ".", ".", ".", ".", { label = "${name} GET" }],
-          ]
-        ])
+        metrics = concat(
+          [for name, bucket in local.pipeline_buckets : ["AWS/S3", "PutRequests", "BucketName", bucket, "FilterId", local.s3_request_metrics_filter, { label = "${name} PUT" }]],
+          [for name, bucket in local.pipeline_buckets : ["AWS/S3", "GetRequests", "BucketName", bucket, "FilterId", local.s3_request_metrics_filter, { label = "${name} GET" }]],
+        )
       }
     },
   ] : []
