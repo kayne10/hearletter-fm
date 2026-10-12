@@ -1,3 +1,5 @@
+> **LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.**
+
 # Hearletter FM Architecture
 
 ## Product Goal

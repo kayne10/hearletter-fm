@@ -1,6 +1,18 @@
 # Terraform Infrastructure
 
-This directory contains the AWS MVP scaffold for Hearletter FM:
+This directory contains the AWS stack for Hearletter FM.
+
+| File | Contents |
+| --- | --- |
+| `main.tf` | SES inbound (S3 action only), raw-email and audio buckets |
+| `pipeline.tf` | Briefing flow: raw-email SQS, briefing-builder, processed bucket, episode-producer, DLQs |
+| `observability.tf` | CloudWatch dashboard for S3, SQS, Lambda, and SES (`dashboard_url` output) |
+| `legacy.tf` | Old multi-queue pipeline, disconnected and safe to delete |
+
+The SQS batch size comes from the number of sources in `config/briefing.json`.
+See `docs/briefing-pipeline.md` for the flow and the cleanup list.
+
+Legacy scaffold, for reference:
 
 - S3 buckets for raw email, artifacts, audio, and RSS feed output.
 - SQS queues and dead-letter queues between pipeline stages.

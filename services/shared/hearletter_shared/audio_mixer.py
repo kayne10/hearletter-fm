@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 """FFmpeg-backed audio mixing utilities."""
 
 from __future__ import annotations

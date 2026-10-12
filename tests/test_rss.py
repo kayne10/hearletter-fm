@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 from hearletter_shared.rss import RssEpisode, build_podcast_feed
 
 

@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 from __future__ import annotations
 
 from pathlib import Path

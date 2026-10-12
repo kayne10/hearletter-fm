@@ -32,12 +32,6 @@ variable "lambda_artifact_dir" {
   default     = "../../artifacts/lambda"
 }
 
-variable "feed_public_read" {
-  description = "Whether the RSS/audio buckets are publicly readable by direct S3 URL. Prefer CloudFront later."
-  type        = bool
-  default     = false
-}
-
 variable "notification_from_email" {
   description = "Verified SES email address used as the sender for MP3-ready notifications. Defaults to no-reply@domain_name."
   type        = string
@@ -51,7 +45,7 @@ variable "audio_url_ttl_seconds" {
 }
 
 variable "tts_provider" {
-  description = "TTS provider used by the tts Lambda. Code defaults to polly; this stack currently deploys openai."
+  description = "TTS provider used by episode-producer: openai or polly."
   type        = string
   default     = "openai"
 
@@ -85,60 +79,25 @@ variable "openai_tts_instructions" {
   default     = "Sound like a warm, natural morning podcast host. Keep the delivery conversational, clear, lightly energetic, and never salesy."
 }
 
-variable "ffmpeg_path" {
-  description = "Path to the FFmpeg executable available to the audio-mixer Lambda."
-  type        = string
-  default     = "ffmpeg"
-}
+variable "raw_email_batch_window_seconds" {
+  description = "Max seconds SQS waits to fill a briefing-builder batch (batch size = number of sources)."
+  type        = number
+  default     = 60
 
-variable "mixer_asset_root" {
-  description = "Local asset root in the Lambda runtime or layer."
-  type        = string
-  default     = "/opt/assets"
-}
-
-variable "mixer_normalize" {
-  description = "Whether the audio mixer applies loudness normalization."
-  type        = bool
-  default     = true
-}
-
-variable "mixer_allow_passthrough_on_error" {
-  description = "Temporarily allow audio-mixer to publish narration as the final MP3 when FFmpeg is unavailable."
-  type        = bool
-  default     = true
-}
-
-variable "mixer_intro_music" {
-  description = "Intro music path relative to mixer_asset_root. Missing files are skipped."
-  type        = string
-  default     = "intro/morning_theme.mp3"
-}
-
-variable "mixer_outro_music" {
-  description = "Outro music path relative to mixer_asset_root. Missing files are skipped."
-  type        = string
-  default     = "outro/closing_theme.mp3"
-}
-
-variable "mixer_transition_sound" {
-  description = "Transition sound path relative to mixer_asset_root. Leave empty to derive from show_style.transition."
-  type        = string
-  default     = ""
-}
-
-variable "show_style" {
-  description = "Default semantic show style carried through script, TTS, and audio mixer stages."
-  type = object({
-    voice      = string
-    pace       = string
-    music      = string
-    transition = string
-  })
-  default = {
-    voice      = "calm"
-    pace       = "slow"
-    music      = "soft"
-    transition = "light_chime"
+  validation {
+    condition     = var.raw_email_batch_window_seconds >= 0 && var.raw_email_batch_window_seconds <= 300
+    error_message = "raw_email_batch_window_seconds must be between 0 and 300."
   }
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch log retention for the briefing Lambdas."
+  type        = number
+  default     = 30
+}
+
+variable "enable_s3_request_metrics" {
+  description = "Enable paid S3 request metrics (PUT/GET counts) for the pipeline buckets and show them on the dashboard."
+  type        = bool
+  default     = false
 }

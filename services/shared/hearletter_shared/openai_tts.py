@@ -47,6 +47,8 @@ class OpenAIAudio:
 class OpenAITTSSynthesizer:
     """Small wrapper around OpenAI's speech API."""
 
+    max_input_chars = OPENAI_TTS_MAX_INPUT_CHARS
+
     def __init__(self, *, config: OpenAITTSConfig, http_post: HttpPost | None = None) -> None:
         self._config = config
         self._http_post = http_post or post_json
@@ -54,7 +56,12 @@ class OpenAITTSSynthesizer:
     def synthesize_ssml(self, ssml: str) -> OpenAIAudio:
         """Convert SSML to plain text and synthesize it to MP3 bytes."""
 
-        input_text = ssml_to_text(ssml)
+        return self.synthesize(ssml_to_text(ssml))
+
+    def synthesize(self, text: str) -> OpenAIAudio:
+        """Synthesize plain text (at most max_input_chars) to MP3 bytes."""
+
+        input_text = normalize_text(text)
         if len(input_text) > OPENAI_TTS_MAX_INPUT_CHARS:
             raise ValueError(
                 "OpenAI TTS input is too long: "

@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 """Podcast RSS generation helpers."""
 
 from __future__ import annotations

@@ -132,3 +132,9 @@ def truncate_value(value: Any, *, max_chars: int) -> str:
     if len(serialized) <= max_chars:
         return serialized
     return f"{serialized[:max_chars]}...<truncated {len(serialized) - max_chars} chars>"
+
+
+def log_json(message: str, **fields: Any) -> None:
+    """Emit one structured CloudWatch log line."""
+
+    print(json.dumps({"message": message, **fields}, default=str, sort_keys=True))

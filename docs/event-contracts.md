@@ -1,3 +1,5 @@
+> **LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.**
+
 # Event Contracts
 
 Events are small JSON messages passed through SQS. Large content should live in S3 and be referenced by key.

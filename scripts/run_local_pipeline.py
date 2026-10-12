@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 """Run the Hearletter FM text pipeline locally against raw email samples."""
 
 from __future__ import annotations

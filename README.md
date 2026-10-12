@@ -2,11 +2,14 @@
 
 Hearletter FM turns forwarded email newsletters into a private, podcast-like morning audio briefing.
 
-Core flow:
+Core flow (see [docs/briefing-pipeline.md](docs/briefing-pipeline.md)):
 
 ```text
-Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> mix -> MP3 + email link
+Forward newsletters -> SES -> S3 raw MIME -> SQS (batch) -> briefing-builder -> script in S3
+  -> episode-producer -> one MP3 + email link from no-reply@
 ```
+
+Newsletter sources are managed in [config/briefing.json](config/briefing.json).
 
 This repository is intentionally serverless-first and event-driven. The MVP favors small Lambda services connected by SQS queues, S3 for durable artifacts, and a private RSS feed that podcast apps can subscribe to.
 
@@ -21,14 +24,18 @@ hearletter-fm/
 │   ├── domain/           # Domain models
 │   ├── types/            # Event contracts
 │   └── utils/            # Shared utility helpers
+├── config/
+│   └── briefing.json     # Newsletter sources that make up the morning briefing
 ├── services/
-│   ├── email-parser/     # Raw MIME -> ParsedNewsletterEvent
-│   ├── newsletter-cleaner/# Parsed -> Cleaned
-│   ├── summarizer/       # Cleaned -> Spoken script
-│   ├── tts/              # Script -> narration MP3
-│   ├── audio-mixer/      # Narration/assets -> final episode MP3
-│   ├── rss-generator/    # Episode metadata -> feed.xml
-│   ├── notifier/         # Episode metadata -> completion email
+│   ├── briefing-builder/ # SQS batch of raw emails -> one daily script
+│   ├── episode-producer/ # Script -> MP3 -> email
+│   ├── email-parser/     # LEGACY: Raw MIME -> ParsedNewsletterEvent
+│   ├── newsletter-cleaner/# LEGACY: Parsed -> Cleaned
+│   ├── summarizer/       # LEGACY: Cleaned -> Spoken script
+│   ├── tts/              # LEGACY: Script -> narration MP3
+│   ├── audio-mixer/      # LEGACY: Narration/assets -> final episode MP3
+│   ├── rss-generator/    # LEGACY: Episode metadata -> feed.xml
+│   ├── notifier/         # LEGACY: Episode metadata -> completion email
 │   └── shared/           # Lambda/service helpers
 └── tests/
 ```
@@ -70,7 +77,13 @@ To save decoded non-text parts such as inline images:
 python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
 ```
 
-## Running The Pipeline Locally
+## Running The Briefing Locally
+
+```bash
+python3 scripts/run_local_briefing.py tests/fixtures/raw_email --min-sources 1
+```
+
+## Running The Legacy Pipeline Locally
 
 Use local samples to generate stage-by-stage files without invoking AWS:
 

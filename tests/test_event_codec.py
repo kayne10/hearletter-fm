@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 from hearletter_domain.models import S3ObjectRef
 from hearletter_events.contracts import EventEnvelope, ParsedNewsletterPayload, new_id, utc_now_iso
 from hearletter_shared.event_codec import dumps_event, loads_event

@@ -7,7 +7,7 @@ import argparse
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +21,7 @@ class LambdaService:
 
     name: str
     source_dir: Path
+    extra_files: dict[str, Path] = field(default_factory=dict)  # zip path -> source file
 
     @property
     def zip_name(self) -> str:
@@ -31,7 +32,16 @@ class LambdaService:
         return self.source_dir / "requirements.txt"
 
 
+BRIEFING_CONFIG = REPO_ROOT / "config" / "briefing.json"
+
 SERVICES = [
+    LambdaService(
+        name="briefing-builder",
+        source_dir=REPO_ROOT / "services" / "briefing-builder",
+        extra_files={"briefing.json": BRIEFING_CONFIG},
+    ),
+    LambdaService(name="episode-producer", source_dir=REPO_ROOT / "services" / "episode-producer"),
+    # LEGACY multi-queue pipeline: remove these with infra/terraform/legacy.tf.
     LambdaService(name="email-parser", source_dir=REPO_ROOT / "services" / "email-parser"),
     LambdaService(
         name="newsletter-cleaner",
@@ -90,6 +100,8 @@ def build_service(service: LambdaService, *, output_dir: Path, install_deps: boo
 
     copy_service_source(service, build_dir)
     copy_shared_packages(build_dir)
+    for zip_path_name, source in service.extra_files.items():
+        shutil.copy2(source, build_dir / zip_path_name)
 
     if install_deps and service.requirements_file.exists():
         install_requirements(service.requirements_file, build_dir)
@@ -98,7 +110,7 @@ def build_service(service: LambdaService, *, output_dir: Path, install_deps: boo
         zip_path.unlink()
     archive_base = zip_path.with_suffix("")
     shutil.make_archive(str(archive_base), "zip", build_dir)
-    print(f"built {zip_path.relative_to(REPO_ROOT)}")
+    print(f"built {zip_path}")
 
 
 def copy_service_source(service: LambdaService, build_dir: Path) -> None:

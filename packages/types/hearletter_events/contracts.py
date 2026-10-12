@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 """JSON-serializable contracts exchanged between pipeline stages."""
 
 from __future__ import annotations

@@ -9,6 +9,7 @@ DEFAULT_POLLY_REGION = "us-east-1"
 DEFAULT_POLLY_ENGINE = "generative"
 DEFAULT_POLLY_VOICE_ID = "Joanna"
 DEFAULT_POLLY_OUTPUT_FORMAT = "mp3"
+POLLY_MAX_INPUT_CHARS = 3000
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +35,8 @@ class PollyAudio:
 class PollySynthesizer:
     """Small wrapper around Amazon Polly's SynthesizeSpeech API."""
 
+    max_input_chars = POLLY_MAX_INPUT_CHARS
+
     def __init__(self, *, polly_client: Any, config: PollySynthesisConfig) -> None:
         self._polly_client = polly_client
         self._config = config
@@ -41,11 +44,19 @@ class PollySynthesizer:
     def synthesize_ssml(self, ssml: str) -> PollyAudio:
         """Synthesize SSML to MP3 bytes."""
 
+        return self._synthesize(ssml, text_type=self._config.text_type)
+
+    def synthesize(self, text: str) -> PollyAudio:
+        """Synthesize plain text (at most max_input_chars) to MP3 bytes."""
+
+        return self._synthesize(text, text_type="text")
+
+    def _synthesize(self, text: str, *, text_type: str) -> PollyAudio:
         response = self._polly_client.synthesize_speech(
             Engine=self._config.engine,
             OutputFormat=self._config.output_format,
-            Text=ssml,
-            TextType=self._config.text_type,
+            Text=text,
+            TextType=text_type,
             VoiceId=self._config.voice_id,
         )
         stream = response["AudioStream"]

@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 """Lambda handler for parsing SES inbound emails stored in S3."""
 
 from __future__ import annotations

@@ -1,3 +1,4 @@
+# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
 """Serialization helpers for SQS event payloads."""
 
 from __future__ import annotations
