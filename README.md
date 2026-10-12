@@ -78,6 +78,12 @@ Edit [config/briefing.json](config/briefing.json), then package and apply. The S
 derived from the number of sources. See [docs/briefing-pipeline.md](docs/briefing-pipeline.md) for
 every field.
 
+## Script Writing
+
+Claude (`claude-opus-5-5` by default) rewrites each day's stories into a podcast-style script
+when `anthropic_api_key_secret_arn` is set. Any failure falls back to the template script. See
+[docs/briefing-pipeline.md](docs/briefing-pipeline.md#script-writing-with-claude).
+
 ## TTS Providers
 
 `episode-producer` picks a provider with `TTS_PROVIDER` (Terraform variable `tts_provider`):
@@ -112,7 +118,8 @@ terraform apply \
   -var="aws_region=us-east-2" \
   -var="domain_name=beta.hearletter.fm" \
   -var="inbound_recipient=listen@beta.hearletter.fm" \
-  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:112894377436:secret:hearletter/openai-api-key-jxNQKi"
+  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:112894377436:secret:hearletter/openai-api-key-jxNQKi" \
+  -var="anthropic_api_key_secret_arn=<anthropic-secret-arn>"
 ```
 
 ## Docs

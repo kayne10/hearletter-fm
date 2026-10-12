@@ -10,7 +10,8 @@ Forward newsletters to listen@beta.hearletter.fm
   -> briefing-builder Lambda         batch size = number of sources, 60s window
        parse forward -> filter by source -> clean -> stage
        -> S3 processed bucket       inbox/<forwarder>/<date>/<source>.json
-       -> once all sources staged:   scripts/<forwarder>/<date>/script.json
+       -> once all sources staged:   template script -> Claude rewrite (template on failure)
+                                     scripts/<forwarder>/<date>/script.json
   -> S3 ObjectCreated (scripts/**/script.json) -> episode-producer Lambda (async, DLQ: episode-dlq)
        chunked TTS -> S3 audio bucket  episodes/<forwarder>/<date>/<episode_id>.mp3
        -> SES email from no-reply@beta.hearletter.fm with a link to the MP3
@@ -40,6 +41,31 @@ SQS batching is best-effort. Lambda polls with several pollers, and the 60-secon
 with whatever has arrived, so three forwards can land in separate invocations. The builder
 therefore stages each newsletter under the forwarder and local date, and writes the script only
 when the required sources are all present. The batch is just the wake-up call.
+
+## Script writing with Claude
+
+When `anthropic_api_key_secret_arn` is set, the builder makes one Claude call per episode. Claude
+turns the staged stories into a conversational, podcast-style script. It merges stories that
+several newsletters cover, and it is told to use only facts from the newsletters.
+
+| Setting (Terraform variable) | Default | Effect |
+| --- | --- | --- |
+| `anthropic_api_key_secret_arn` | empty | Secret holding the key, raw or JSON with `api_key`. Empty means template only. |
+| `script_writer` | `claude` | Set `template` to switch Claude off without removing the key. |
+| `script_model` | `claude-opus-5-5` | `claude-sonnet-5-5` roughly halves the cost. |
+| `script_effort` | `medium` | Higher effort means more thinking and higher cost. |
+
+The call uses structured output, so it returns validated segments. It also enables the API's
+refusal fallback. A refusal, truncation, error, or a script under 150 words keeps the template
+text, and the episode still ships. `script.json` records `writer` and, when Claude wrote the text,
+the `template_text` it replaced. The `script_writer_succeeded` and `script_writer_failed` log lines
+show up in the dashboard's pipeline-events table.
+
+Try it locally:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... python3 scripts/run_local_briefing.py tests/fixtures/raw_email --min-sources 1 --ai-script
+```
 
 ## Idempotency and failure handling
 
@@ -75,7 +101,8 @@ terraform apply \
   -var="aws_region=us-east-2" \
   -var="domain_name=beta.hearletter.fm" \
   -var="inbound_recipient=listen@beta.hearletter.fm" \
-  -var="openai_api_key_secret_arn=<secret-arn>"
+  -var="openai_api_key_secret_arn=<secret-arn>" \
+  -var="anthropic_api_key_secret_arn=<secret-arn>"
 ```
 
 
@@ -86,8 +113,9 @@ terraform apply \
   CloudFront with signed URLs, or attaching small MP3s to the email, fixes this.
 - If a configured newsletter never arrives, that day has no episode. Lower `min_sources` to accept
   partial days. A scheduled "flush at 9am" invocation is the natural next step.
-- The script is template-based. Swapping `build_briefing_script` for an LLM rewrite is the next
-  quality step.
+- Claude writes the script, but the voice is still OpenAI TTS by default, because Claude has
+  no text-to-speech. `tts_provider = "polly"` removes the OpenAI dependency at some cost to voice
+  quality.
 - Story extraction in `hearletter_shared/cleaning.py` was tuned on Morning Brew. Check TLDR and The
   Rundown output with the local runner once you have raw samples.
 

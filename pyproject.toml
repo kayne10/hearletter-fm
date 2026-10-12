@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Event-driven newsletter-to-private-podcast pipeline."
 requires-python = ">=3.11"
 dependencies = [
+  "anthropic>=1.13,<2",
   "beautifulsoup4>=4.12.3",
   "boto3>=1.34.0",
   "tzdata>=2024.1",

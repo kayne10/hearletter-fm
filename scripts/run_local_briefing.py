@@ -7,6 +7,7 @@ Storage is a local folder; email sending is printed instead of sent.
 Examples:
     python3 scripts/run_local_briefing.py tests/fixtures/raw_email --min-sources 1
     OPENAI_API_KEY=sk-... python3 scripts/run_local_briefing.py emails/ --synthesize
+    CLAUDE_API_KEY=sk-ant-... python3 scripts/run_local_briefing.py emails/ --ai-script
 """
 
 from __future__ import annotations
@@ -68,6 +69,11 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "artifacts/local/briefing")
     parser.add_argument("--keep", action="store_true", help="Keep earlier staged newsletters")
     parser.add_argument("--synthesize", action="store_true", help="Call the TTS provider")
+    parser.add_argument(
+        "--ai-script",
+        action="store_true",
+        help="Have Claude rewrite the script (ANTHROPIC_API_KEY, SCRIPT_MODEL, SCRIPT_EFFORT)",
+    )
     args = parser.parse_args()
 
     if args.output_dir.exists() and not args.keep:
@@ -87,6 +93,21 @@ def main() -> None:
     )
     raw_by_key = {f"raw-email/default/{path.name}": path for path in files}
 
+    script_writer = None
+    if args.ai_script:
+        import boto3
+        from hearletter_shared.script_writer import build_script_writer
+
+        env = dict(os.environ)
+        if not env.get("ANTHROPIC_API_KEY") and env.get("CLAUDE_API_KEY"):
+            env["ANTHROPIC_API_KEY"] = env["CLAUDE_API_KEY"]  # local shell alias
+        script_writer = build_script_writer(env=env, boto3_session_factory=boto3.Session)
+        if script_writer is None:
+            parser.error(
+                "--ai-script needs ANTHROPIC_API_KEY, CLAUDE_API_KEY, "
+                "or ANTHROPIC_API_KEY_SECRET_ARN"
+            )
+
     builder = load_handler("briefing-builder")
     outcome = builder.process_batch(
         [sqs_record(index, key) for index, key in enumerate(raw_by_key)],
@@ -94,6 +115,7 @@ def main() -> None:
         processed=processed,
         config=config,
         now=datetime.now(UTC),
+        script_writer=script_writer,
     )
     print(json.dumps(dataclasses.asdict(outcome), indent=2))
 
@@ -103,7 +125,8 @@ def main() -> None:
         return
     for item in built:
         script = json.loads(processed.get_bytes(item["script_key"]))
-        print(f"\n===== {item['script_key']} =====\n{script['text']}\n")
+        print(f"\n===== {item['script_key']} (writer: {script['writer']}) =====")
+        print(f"{script['text']}\n")
         if not args.synthesize:
             continue
         import boto3

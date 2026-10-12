@@ -86,6 +86,7 @@ class Story:
 
     title: str
     summary: str
+    source_text: str = ""  # fuller cleaned excerpt, used by the AI script writer
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +123,8 @@ class BriefingScript:
     sources: tuple[str, ...]
     text: str
     created_at: str
+    writer: str = "template"  # "template" or the Claude model id that wrote the text
+    template_text: str | None = None  # template draft kept for comparison when AI-written
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

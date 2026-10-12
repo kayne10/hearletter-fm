@@ -7,21 +7,25 @@ arrive in different batches or different Lambda invocations. So each configured 
 staged in the processed bucket under its forwarder and local date, and the script is written
 once every required source for that day is present. A conditional write makes the script
 creation exactly-once even when two invocations race.
+
+When an Anthropic key is configured, Claude rewrites the template script into a podcast-style
+script. Any Claude failure keeps the template text, so the episode is never blocked.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote_plus
 from zoneinfo import ZoneInfo
 
-from hearletter_domain.briefing import BriefingConfig, StagedNewsletter, slugify
+from hearletter_domain.briefing import BriefingConfig, BriefingScript, StagedNewsletter, slugify
 from hearletter_shared.briefing_script import build_briefing_script, story_from_candidate
 from hearletter_shared.cleaning import clean_newsletter_content, extract_story_candidates
 from hearletter_shared.config import load_briefing_config
@@ -29,10 +33,15 @@ from hearletter_shared.forwarded_email import parse_forwarded_email
 from hearletter_shared.lambda_events import log_json, log_lambda_event
 from hearletter_shared.object_store import ObjectStore, S3ObjectStore, get_json, put_json
 
+if TYPE_CHECKING:  # the writer pulls in anthropic/pydantic; template mode doesn't need them
+    from hearletter_shared.script_writer import ScriptWriter
+
 SES_SETUP_KEY_SUFFIX = "AMAZON_SES_SETUP_NOTIFICATION"
 SCRIPT_FILE_NAME = "script.json"
 
 _config: BriefingConfig | None = None
+_script_writer: ScriptWriter | None = None
+_script_writer_loaded = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +72,7 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         processed=S3ObjectStore(bucket=os.environ["PROCESSED_BUCKET"], s3_client=s3_client),
         config=get_config(),
         now=datetime.now(UTC),
+        script_writer=get_script_writer(),
     )
     log_json(
         "briefing_batch_processed",
@@ -83,6 +93,19 @@ def get_config() -> BriefingConfig:
     return _config
 
 
+def get_script_writer() -> ScriptWriter | None:
+    """Built once per container; the Anthropic client itself is created on first use."""
+
+    global _script_writer, _script_writer_loaded
+    if not _script_writer_loaded:
+        import boto3
+        from hearletter_shared.script_writer import build_script_writer
+
+        _script_writer = build_script_writer(env=os.environ, boto3_session_factory=boto3.Session)
+        _script_writer_loaded = True
+    return _script_writer
+
+
 def process_batch(
     records: Iterable[dict[str, Any]],
     *,
@@ -90,6 +113,7 @@ def process_batch(
     processed: ObjectStore,
     config: BriefingConfig,
     now: datetime,
+    script_writer: ScriptWriter | None = None,
 ) -> BatchOutcome:
     """Stage every email in the batch, then try to finish each affected day's briefing."""
 
@@ -121,6 +145,7 @@ def process_batch(
                 processed=processed,
                 config=config,
                 created_at=iso(now),
+                script_writer=script_writer,
             )
             outcome.briefings.append(
                 {"forwarder": forwarder, "episode_date": episode_date, **status}
@@ -198,6 +223,7 @@ def finalize_briefing(
     processed: ObjectStore,
     config: BriefingConfig,
     created_at: str,
+    script_writer: ScriptWriter | None = None,
 ) -> dict[str, Any]:
     """Write the day's script once enough configured sources are staged."""
 
@@ -223,8 +249,41 @@ def finalize_briefing(
         episode_date=episode_date,
         created_at=created_at,
     )
+    if script_writer is not None:
+        script = rewrite_script(script, staged, config=config, script_writer=script_writer)
     written = put_json(processed, key, script.to_dict(), if_absent=True)
-    return {"status": "built" if written else "already_built", "script_key": key}
+    return {
+        "status": "built" if written else "already_built",
+        "script_key": key,
+        "writer": script.writer,
+    }
+
+
+def rewrite_script(
+    script: BriefingScript,
+    newsletters: list[StagedNewsletter],
+    *,
+    config: BriefingConfig,
+    script_writer: ScriptWriter,
+) -> BriefingScript:
+    """Swap in the AI-written text, keeping the template draft; fall back on any failure."""
+
+    try:
+        text = script_writer.write(
+            newsletters=newsletters, config=config, episode_date=script.episode_date
+        )
+    except Exception as exc:
+        log_json("script_writer_failed", writer=script_writer.name, error=repr(exc))
+        return script
+    log_json(
+        "script_writer_succeeded",
+        writer=script_writer.name,
+        words=len(text.split()),
+        usage=getattr(script_writer, "last_usage", None),
+    )
+    return dataclasses.replace(
+        script, text=text, writer=script_writer.name, template_text=script.text
+    )
 
 
 def inbox_prefix(forwarder: str, episode_date: str) -> str:

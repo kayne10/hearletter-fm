@@ -179,3 +179,70 @@ def test_handler_returns_partial_batch_failures(
 
 def test_local_date_uses_configured_timezone() -> None:
     assert builder.local_date("2026-10-13T03:00:00Z", "America/Denver") == "2026-10-12"
+
+
+class StubWriter:
+    name = "claude-opus-5-5"
+
+    def __init__(self, result: str | Exception) -> None:
+        self.result = result
+        self.calls = 0
+
+    def write(self, **kwargs: Any) -> str:
+        self.calls += 1
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+def run_with_writer(store: LocalObjectStore, config: BriefingConfig, writer: StubWriter) -> Any:
+    return builder.process_batch(
+        [sqs_record(f"m-{k}", k) for k in ("a", "b", "c")],
+        read_raw=lambda ref: {"a": TLDR, "b": MORNING_BREW, "c": RUNDOWN}[ref.key],
+        processed=store,
+        config=config,
+        now=NOW,
+        script_writer=writer,
+    )
+
+
+def test_ai_writer_text_is_used_and_template_kept(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    writer = StubWriter("Good morning. Today's big AI story is Anthropic.")
+    outcome = run_with_writer(store, config, writer)
+
+    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    assert outcome.briefings[0]["writer"] == "claude-opus-5-5"
+    assert script["text"].startswith("Good morning. Today's big AI story")
+    assert script["writer"] == "claude-opus-5-5"
+    assert "Let's start with TLDR." in script["template_text"]
+
+
+def test_ai_writer_failure_falls_back_to_template(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    outcome = run_with_writer(store, config, StubWriter(RuntimeError("API down")))
+
+    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    assert outcome.failed_message_ids == []
+    assert script["writer"] == "template" and script["template_text"] is None
+    assert "Let's start with TLDR." in script["text"]
+
+
+def test_ai_writer_not_called_while_waiting_or_after_built(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    writer = StubWriter("Good morning.")
+    builder.process_batch(
+        [sqs_record("m-a", "a")],
+        read_raw=lambda ref: TLDR,
+        processed=store,
+        config=config,
+        now=NOW,
+        script_writer=writer,
+    )
+    assert writer.calls == 0
+    run_with_writer(store, config, writer)
+    run_with_writer(store, config, writer)
+    assert writer.calls == 1

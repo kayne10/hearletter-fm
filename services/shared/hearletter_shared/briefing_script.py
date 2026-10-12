@@ -28,7 +28,8 @@ def story_from_candidate(candidate: dict[str, object]) -> Story:
     title = spoken_text(str(candidate.get("title", ""))).rstrip(".:")
     if title.lower() in PLACEHOLDER_TITLES:
         title = ""
-    return Story(title=title, summary=spoken_summary(str(candidate.get("summary_source_text", ""))))
+    excerpt = str(candidate.get("summary_source_text", ""))
+    return Story(title=title, summary=spoken_summary(excerpt), source_text=spoken_text(excerpt))
 
 
 def spoken_summary(excerpt: str, *, max_sentences: int = 2) -> str:
@@ -68,8 +69,7 @@ def build_briefing_script(
     Paragraphs are separated by blank lines; the TTS stage chunks on those boundaries.
     """
 
-    source_order = {source.email: index for index, source in enumerate(config.sources)}
-    ordered = sorted(newsletters, key=lambda item: source_order.get(item.source_email, 99))
+    ordered = order_newsletters(newsletters, config)
     names = [item.source_name for item in ordered]
 
     paragraphs = [
@@ -94,6 +94,15 @@ def build_briefing_script(
         text="\n\n".join(paragraph for paragraph in paragraphs if paragraph.strip()),
         created_at=created_at,
     )
+
+
+def order_newsletters(
+    newsletters: Sequence[StagedNewsletter], config: BriefingConfig
+) -> list[StagedNewsletter]:
+    """Newsletters in the order their sources appear in the config."""
+
+    source_order = {source.email: index for index, source in enumerate(config.sources)}
+    return sorted(newsletters, key=lambda item: source_order.get(item.source_email, 99))
 
 
 def source_intro(name: str, index: int, total: int) -> str:

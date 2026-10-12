@@ -14,6 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "lambda"
 BUILD_ROOT = REPO_ROOT / "artifacts" / "build" / "lambda"
 
+# Must match the Lambda runtime in infra/terraform/pipeline.tf. Dependencies with compiled
+# code (pydantic-core, jiter) are fetched as Linux wheels so zips built on macOS still run.
+LAMBDA_PYTHON_VERSION = "3.11"
+LAMBDA_PLATFORM = "manylinux2014_x86_64"
+
 
 @dataclass(frozen=True, slots=True)
 class LambdaService:
@@ -134,6 +139,13 @@ def install_requirements(requirements_file: Path, target_dir: Path) -> None:
         "--target",
         str(target_dir),
         "--upgrade",
+        "--platform",
+        LAMBDA_PLATFORM,
+        "--implementation",
+        "cp",
+        "--python-version",
+        LAMBDA_PYTHON_VERSION,
+        "--only-binary=:all:",
     ]
     print(f"installing dependencies from {requirements_file.relative_to(REPO_ROOT)}")
     subprocess.run(command, check=True)
