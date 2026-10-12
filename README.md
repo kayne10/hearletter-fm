@@ -5,7 +5,7 @@ Hearletter FM turns forwarded email newsletters into a private, podcast-like mor
 Core flow:
 
 ```text
-Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> MP3 + email link
+Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> mix -> MP3 + email link
 ```
 
 This repository is intentionally serverless-first and event-driven. The MVP favors small Lambda services connected by SQS queues, S3 for durable artifacts, and a private RSS feed that podcast apps can subscribe to.
@@ -25,7 +25,8 @@ hearletter-fm/
 │   ├── email-parser/     # Raw MIME -> ParsedNewsletterEvent
 │   ├── newsletter-cleaner/# Parsed -> Cleaned
 │   ├── summarizer/       # Cleaned -> Spoken script
-│   ├── tts/              # Script -> MP3
+│   ├── tts/              # Script -> narration MP3
+│   ├── audio-mixer/      # Narration/assets -> final episode MP3
 │   ├── rss-generator/    # Episode metadata -> feed.xml
 │   ├── notifier/         # Episode metadata -> completion email
 │   └── shared/           # Lambda/service helpers
@@ -111,6 +112,42 @@ python3 scripts/run_local_pipeline.py \
 
 MP3 files are written to each sample's `04_polly_audio/episode.mp3`.
 
+## Audio Mixer
+
+The audio mixer is a separate stage after TTS. TTS only creates narration audio; the mixer owns the final podcast episode. The shared mixer domain models live in `hearletter_domain.audio`, and the FFmpeg implementation lives in `hearletter_shared.audio_mixer`.
+
+The deployed mixer can run narration-only today. When you add assets, put them in a Lambda layer or container image under:
+
+```text
+/opt/assets/
+├── intro/morning_theme.mp3
+├── transitions/soft_chime.mp3
+├── ambience/rain.mp3
+└── outro/closing_theme.mp3
+```
+
+The default Terraform config looks for `intro/morning_theme.mp3` and `outro/closing_theme.mp3`. Missing files are skipped, so you can deploy before the asset set is final.
+
+Until FFmpeg is packaged into the Lambda runtime, `mixer_allow_passthrough_on_error = true` lets the audio mixer publish the narration MP3 as the final episode if the `ffmpeg` executable is missing. Turn that off after adding an FFmpeg Lambda layer or container image.
+
+You can control the show style with Terraform:
+
+```hcl
+show_style = {
+  voice      = "calm"
+  pace       = "slow"
+  music      = "soft"
+  transition = "light_chime"
+}
+```
+
+Current mappings:
+
+- `voice = "calm"` uses OpenAI voice `marin`; `bright` uses `coral`; `deep` uses `cedar`.
+- `pace = "slow"` lowers Polly SSML prosody and adds slow-paced OpenAI voice instructions.
+- `music = "soft"` prefers `intro/minimalist_intro.mp3`.
+- `transition = "light_chime"` prefers `transitions/soft_chime.mp3`.
+
 ## TTS Providers
 
 The TTS Lambda supports a provider switch with `TTS_PROVIDER`:
@@ -122,7 +159,7 @@ Terraform currently sets `tts_provider = "openai"` so you can try OpenAI first. 
 
 ```text
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
-OPENAI_TTS_VOICE=marin
+OPENAI_TTS_VOICE=
 OPENAI_TTS_RESPONSE_FORMAT=mp3
 ```
 
@@ -136,7 +173,7 @@ terraform plan \
 
 ## Emailing Finished MP3 Links
 
-The parser carries the SES `mail.source` address through the pipeline as `notification_email`. After TTS writes an MP3, the TTS Lambda publishes the generated episode event to both:
+The parser carries the SES `mail.source` address through the pipeline as `notification_email`. After the audio mixer writes the final MP3, it publishes the generated episode event to both:
 
 - `generated-episode`, consumed by the RSS generator
 - `notification-email`, consumed by the notifier

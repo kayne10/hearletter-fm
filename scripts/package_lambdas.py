@@ -39,6 +39,7 @@ SERVICES = [
     ),
     LambdaService(name="summarizer", source_dir=REPO_ROOT / "services" / "summarizer"),
     LambdaService(name="tts", source_dir=REPO_ROOT / "services" / "tts"),
+    LambdaService(name="audio-mixer", source_dir=REPO_ROOT / "services" / "audio-mixer"),
     LambdaService(name="rss-generator", source_dir=REPO_ROOT / "services" / "rss-generator"),
     LambdaService(name="notifier", source_dir=REPO_ROOT / "services" / "notifier"),
 ]

@@ -19,6 +19,7 @@ artifacts/lambda/
 ├── newsletter-cleaner.zip
 ├── summarizer.zip
 ├── tts.zip
+├── audio-mixer.zip
 ├── rss-generator.zip
 └── notifier.zip
 ```
@@ -53,3 +54,5 @@ SES inbound receiving is region-specific. Deploy this stack in a region that sup
 The notification sender must be a verified SES identity in the deployment region, unless your account is out of the SES sandbox and the domain identity covers it.
 
 The deployed Terraform default is `tts_provider = "openai"` for evaluation. Set `tts_provider = "polly"` to switch back to Amazon Polly without changing Lambda code.
+The `audio-mixer` Lambda expects FFmpeg to be available through a Lambda layer or container image. It can deploy before audio assets exist; missing intro/outro files are skipped.
+Use `show_style` to control semantic voice, pace, music, and transition defaults across the summarizer, TTS, and mixer stages.

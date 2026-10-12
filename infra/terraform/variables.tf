@@ -74,13 +74,71 @@ variable "openai_tts_model" {
 }
 
 variable "openai_tts_voice" {
-  description = "OpenAI speech voice."
+  description = "Optional explicit OpenAI speech voice. Leave empty to derive from show_style.voice."
   type        = string
-  default     = "marin"
+  default     = ""
 }
 
 variable "openai_tts_instructions" {
   description = "Style instructions sent to OpenAI TTS."
   type        = string
   default     = "Sound like a warm, natural morning podcast host. Keep the delivery conversational, clear, lightly energetic, and never salesy."
+}
+
+variable "ffmpeg_path" {
+  description = "Path to the FFmpeg executable available to the audio-mixer Lambda."
+  type        = string
+  default     = "ffmpeg"
+}
+
+variable "mixer_asset_root" {
+  description = "Local asset root in the Lambda runtime or layer."
+  type        = string
+  default     = "/opt/assets"
+}
+
+variable "mixer_normalize" {
+  description = "Whether the audio mixer applies loudness normalization."
+  type        = bool
+  default     = true
+}
+
+variable "mixer_allow_passthrough_on_error" {
+  description = "Temporarily allow audio-mixer to publish narration as the final MP3 when FFmpeg is unavailable."
+  type        = bool
+  default     = true
+}
+
+variable "mixer_intro_music" {
+  description = "Intro music path relative to mixer_asset_root. Missing files are skipped."
+  type        = string
+  default     = "intro/morning_theme.mp3"
+}
+
+variable "mixer_outro_music" {
+  description = "Outro music path relative to mixer_asset_root. Missing files are skipped."
+  type        = string
+  default     = "outro/closing_theme.mp3"
+}
+
+variable "mixer_transition_sound" {
+  description = "Transition sound path relative to mixer_asset_root. Leave empty to derive from show_style.transition."
+  type        = string
+  default     = ""
+}
+
+variable "show_style" {
+  description = "Default semantic show style carried through script, TTS, and audio mixer stages."
+  type = object({
+    voice      = string
+    pace       = string
+    music      = string
+    transition = string
+  })
+  default = {
+    voice      = "calm"
+    pace       = "slow"
+    music      = "soft"
+    transition = "light_chime"
+  }
 }

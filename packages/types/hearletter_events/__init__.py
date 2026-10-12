@@ -5,6 +5,7 @@ from hearletter_events.contracts import (
     CleanedNewsletterPayload,
     EventEnvelope,
     GeneratedEpisodePayload,
+    NarrationAudioPayload,
     ParsedNewsletterPayload,
 )
 
@@ -13,6 +14,6 @@ __all__ = [
     "CleanedNewsletterPayload",
     "EventEnvelope",
     "GeneratedEpisodePayload",
+    "NarrationAudioPayload",
     "ParsedNewsletterPayload",
 ]
-

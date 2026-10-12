@@ -16,6 +16,7 @@ EventType = Literal[
     "newsletter.parsed",
     "newsletter.cleaned",
     "briefing.scripted",
+    "narration.audio.generated",
     "episode.generated",
 ]
 
@@ -87,11 +88,27 @@ class BriefingScriptPayload:
     estimated_duration_seconds: int | None
     voice: str
     notification_email: str | None = None
+    show_style: dict[str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NarrationAudioPayload:
+    """Output of the TTS stage."""
+
+    episode_id: str
+    title: str
+    narration: S3ObjectRef
+    mime_type: str
+    byte_length: int
+    duration_seconds: int | None
+    generated_at: str
+    notification_email: str | None = None
+    show_style: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class GeneratedEpisodePayload:
-    """Output of the TTS stage."""
+    """Output of the audio-mixer stage."""
 
     episode_id: str
     title: str
@@ -102,3 +119,4 @@ class GeneratedEpisodePayload:
     duration_seconds: int | None
     published_at: str
     notification_email: str | None = None
+    show_style: dict[str, str] | None = None

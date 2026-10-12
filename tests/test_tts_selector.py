@@ -53,3 +53,28 @@ def test_tts_provider_can_select_openai() -> None:
 
     assert isinstance(synthesizer, OpenAITTSSynthesizer)
     assert session.client_calls == []
+
+
+def test_openai_config_uses_show_style_when_voice_is_not_explicit() -> None:
+    handler = load_tts_handler()
+    session = FakeBoto3Session()
+
+    config = handler.openai_config_from_env(
+        env={
+            "OPENAI_API_KEY": "sk-test",
+            "OPENAI_TTS_MODEL": "gpt-4o-mini-tts",
+            "OPENAI_TTS_VOICE": "",
+            "OPENAI_TTS_INSTRUCTIONS": "Base host instructions.",
+        },
+        boto3_session=session,
+        show_style={
+            "voice": "bright",
+            "pace": "slow",
+            "music": "soft",
+            "transition": "light_chime",
+        },
+    )
+
+    assert config.voice == "coral"
+    assert "Voice style: bright." in config.instructions
+    assert "Pace: slow." in config.instructions

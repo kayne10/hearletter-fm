@@ -17,6 +17,12 @@ from hearletter_utils.text import estimate_spoken_duration_seconds
 
 DEFAULT_VOICE = "alloy"
 DEFAULT_POLLY_VOICE = "Joanna"
+DEFAULT_SHOW_STYLE = {
+    "voice": "calm",
+    "pace": "slow",
+    "music": "soft",
+    "transition": "light_chime",
+}
 
 
 def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
@@ -82,6 +88,7 @@ def process_event(
             clean_text=clean_text,
             story_candidates=story_candidates,
             episode_date=now[:10],
+            show_style=show_style_from_env(os.environ),
         )
         polly_ssml = build_polly_ssml(context)
         prompt = build_morning_briefing_prompt(clean_text)
@@ -114,6 +121,7 @@ def process_event(
             ssml_text_value=polly_ssml,
             artifact_bucket=artifact_bucket,
             notification_email=payload.get("notification_email"),
+            show_style=show_style_from_env(os.environ),
         )
     else:
         script_payload = BriefingScriptPayload(
@@ -123,6 +131,7 @@ def process_event(
             estimated_duration_seconds=None,
             voice=DEFAULT_POLLY_VOICE,
             notification_email=payload.get("notification_email"),
+            show_style=show_style_from_env(os.environ),
         )
 
     return EventEnvelope(
@@ -188,6 +197,7 @@ def build_podcast_context(
     clean_text: str,
     story_candidates: list[dict[str, Any]],
     episode_date: str | None = None,
+    show_style: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build agent-ready context for a spoken morning briefing."""
 
@@ -201,6 +211,7 @@ def build_podcast_context(
             "mode": ContentMode.MORNING_BRIEFING.value,
             "target_duration_seconds": 420,
             "voice": DEFAULT_VOICE,
+            "show_style": show_style or DEFAULT_SHOW_STYLE,
         },
         "editorial_direction": {
             "goal": "Turn the newsletter into a concise, conversational morning podcast segment.",
@@ -234,9 +245,10 @@ def build_polly_ssml(context: dict[str, Any]) -> str:
 
     episode = context["episode"]
     stories = context["story_candidates"]
+    rate = polly_rate_for_pace(str(episode.get("show_style", {}).get("pace", "normal")))
     parts = [
         '<speak>',
-        '  <prosody rate="92%">',
+        f'  <prosody rate="{rate}">',
         f'    <p><s>{ssml_text(episode["title"])}.</s></p>',
         '    <break time="650ms"/>',
         '    <p><s>Here are the stories worth carrying into your day.</s></p>',
@@ -338,6 +350,7 @@ def script_event_payload(
     ssml_text_value: str,
     artifact_bucket: str,
     notification_email: str | None = None,
+    show_style: dict[str, str] | None = None,
 ) -> BriefingScriptPayload:
     """Create script payload metadata after writing a local or S3 SSML artifact."""
 
@@ -348,4 +361,28 @@ def script_event_payload(
         estimated_duration_seconds=estimate_spoken_duration_seconds(ssml_text_value),
         voice=DEFAULT_POLLY_VOICE,
         notification_email=notification_email,
+        show_style=show_style or DEFAULT_SHOW_STYLE,
     )
+
+
+def show_style_from_env(env: Any) -> dict[str, str]:
+    """Return the show style carried into TTS and audio mixing."""
+
+    return {
+        "voice": str(env.get("SHOW_STYLE_VOICE", DEFAULT_SHOW_STYLE["voice"])),
+        "pace": str(env.get("SHOW_STYLE_PACE", DEFAULT_SHOW_STYLE["pace"])),
+        "music": str(env.get("SHOW_STYLE_MUSIC", DEFAULT_SHOW_STYLE["music"])),
+        "transition": str(env.get("SHOW_STYLE_TRANSITION", DEFAULT_SHOW_STYLE["transition"])),
+    }
+
+
+def polly_rate_for_pace(pace: str) -> str:
+    """Map a semantic pace to a Polly SSML prosody rate."""
+
+    rates = {
+        "very_slow": "82%",
+        "slow": "88%",
+        "normal": "95%",
+        "fast": "105%",
+    }
+    return rates.get(pace.lower(), rates["normal"])

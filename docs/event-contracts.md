@@ -74,13 +74,19 @@ Produced by `summarizer`.
     "key": "scripts/default/nws_123/script.txt"
   },
   "estimated_duration_seconds": 420,
-  "voice": "alloy"
+  "voice": "alloy",
+  "show_style": {
+    "voice": "calm",
+    "pace": "slow",
+    "music": "soft",
+    "transition": "light_chime"
+  }
 }
 ```
 
 ## `episode.generated`
 
-Produced by `tts`.
+Produced by `audio-mixer`.
 
 ```json
 {
@@ -98,3 +104,27 @@ Produced by `tts`.
 }
 ```
 
+## `narration.audio.generated`
+
+Produced by `tts`.
+
+```json
+{
+  "episode_id": "ep_01h...",
+  "title": "Morning Briefing - 2026-05-29",
+  "narration": {
+    "bucket": "hearletter-audio",
+    "key": "narration/default/ep_123.mp3"
+  },
+  "mime_type": "audio/mpeg",
+  "byte_length": 1234567,
+  "duration_seconds": 420,
+  "generated_at": "2026-05-29T14:45:00Z",
+  "show_style": {
+    "voice": "calm",
+    "pace": "slow",
+    "music": "soft",
+    "transition": "light_chime"
+  }
+}
+```

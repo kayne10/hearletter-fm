@@ -32,6 +32,13 @@ locals {
       timeout       = 180
       memory_size   = 1024
     }
+    audio_mixer = {
+      function_name = "${local.name_prefix}-audio-mixer"
+      artifact      = "${var.lambda_artifact_dir}/audio-mixer.zip"
+      handler       = "handler.handler"
+      timeout       = 180
+      memory_size   = 1024
+    }
     rss_generator = {
       function_name = "${local.name_prefix}-rss-generator"
       artifact      = "${var.lambda_artifact_dir}/rss-generator.zip"
@@ -52,6 +59,7 @@ locals {
     "parsed-newsletter",
     "cleaned-newsletter",
     "briefing-script",
+    "narration-audio",
     "generated-episode",
     "notification-email",
   ]
@@ -280,30 +288,42 @@ resource "aws_lambda_function" "service" {
 
   environment {
     variables = {
-      ARTIFACT_BUCKET           = aws_s3_bucket.artifacts.bucket
-      AUDIO_BUCKET              = aws_s3_bucket.audio.bucket
-      FEED_BUCKET               = aws_s3_bucket.feed.bucket
-      RAW_EMAIL_BUCKET          = aws_s3_bucket.raw_email.bucket
-      RAW_EMAIL_PREFIX          = "raw-email/default/"
-      METADATA_TABLE            = aws_dynamodb_table.metadata.name
-      PARSED_QUEUE_URL          = aws_sqs_queue.pipeline["parsed-newsletter"].url
-      CLEANED_QUEUE_URL         = aws_sqs_queue.pipeline["cleaned-newsletter"].url
-      SCRIPT_QUEUE_URL          = aws_sqs_queue.pipeline["briefing-script"].url
-      EPISODE_QUEUE_URL         = aws_sqs_queue.pipeline["generated-episode"].url
-      NOTIFICATION_QUEUE_URL    = aws_sqs_queue.pipeline["notification-email"].url
-      NOTIFICATION_FROM_EMAIL   = var.notification_from_email != "" ? var.notification_from_email : "no-reply@${var.domain_name}"
-      AUDIO_URL_TTL_SECONDS     = tostring(var.audio_url_ttl_seconds)
-      TTS_PROVIDER              = var.tts_provider
-      POLLY_REGION              = "us-east-1"
-      POLLY_ENGINE              = "generative"
-      POLLY_VOICE_ID            = "Joanna"
-      OPENAI_API_KEY_SECRET_ARN = var.openai_api_key_secret_arn
-      OPENAI_TTS_MODEL          = var.openai_tts_model
-      OPENAI_TTS_VOICE          = var.openai_tts_voice
-      OPENAI_TTS_INSTRUCTIONS   = var.openai_tts_instructions
-      LOG_FULL_EVENTS           = "false"
-      POWERTOOLS_SERVICE        = each.key
-      POWERTOOLS_LOG_LEVEL      = "INFO"
+      ARTIFACT_BUCKET                  = aws_s3_bucket.artifacts.bucket
+      AUDIO_BUCKET                     = aws_s3_bucket.audio.bucket
+      FEED_BUCKET                      = aws_s3_bucket.feed.bucket
+      RAW_EMAIL_BUCKET                 = aws_s3_bucket.raw_email.bucket
+      RAW_EMAIL_PREFIX                 = "raw-email/default/"
+      METADATA_TABLE                   = aws_dynamodb_table.metadata.name
+      PARSED_QUEUE_URL                 = aws_sqs_queue.pipeline["parsed-newsletter"].url
+      CLEANED_QUEUE_URL                = aws_sqs_queue.pipeline["cleaned-newsletter"].url
+      SCRIPT_QUEUE_URL                 = aws_sqs_queue.pipeline["briefing-script"].url
+      NARRATION_QUEUE_URL              = aws_sqs_queue.pipeline["narration-audio"].url
+      EPISODE_QUEUE_URL                = aws_sqs_queue.pipeline["generated-episode"].url
+      NOTIFICATION_QUEUE_URL           = aws_sqs_queue.pipeline["notification-email"].url
+      NOTIFICATION_FROM_EMAIL          = var.notification_from_email != "" ? var.notification_from_email : "no-reply@${var.domain_name}"
+      AUDIO_URL_TTL_SECONDS            = tostring(var.audio_url_ttl_seconds)
+      TTS_PROVIDER                     = var.tts_provider
+      POLLY_REGION                     = "us-east-1"
+      POLLY_ENGINE                     = "generative"
+      POLLY_VOICE_ID                   = "Joanna"
+      OPENAI_API_KEY_SECRET_ARN        = var.openai_api_key_secret_arn
+      OPENAI_TTS_MODEL                 = var.openai_tts_model
+      OPENAI_TTS_VOICE                 = var.openai_tts_voice
+      OPENAI_TTS_INSTRUCTIONS          = var.openai_tts_instructions
+      FFMPEG_PATH                      = var.ffmpeg_path
+      MIXER_ASSET_ROOT                 = var.mixer_asset_root
+      MIXER_NORMALIZE                  = tostring(var.mixer_normalize)
+      MIXER_ALLOW_PASSTHROUGH_ON_ERROR = tostring(var.mixer_allow_passthrough_on_error)
+      MIXER_INTRO_MUSIC                = var.mixer_intro_music
+      MIXER_OUTRO_MUSIC                = var.mixer_outro_music
+      MIXER_TRANSITION_SOUND           = var.mixer_transition_sound
+      SHOW_STYLE_VOICE                 = var.show_style.voice
+      SHOW_STYLE_PACE                  = var.show_style.pace
+      SHOW_STYLE_MUSIC                 = var.show_style.music
+      SHOW_STYLE_TRANSITION            = var.show_style.transition
+      LOG_FULL_EVENTS                  = "false"
+      POWERTOOLS_SERVICE               = each.key
+      POWERTOOLS_LOG_LEVEL             = "INFO"
     }
   }
 
@@ -325,6 +345,12 @@ resource "aws_lambda_event_source_mapping" "summarizer_from_cleaned" {
 resource "aws_lambda_event_source_mapping" "tts_from_script" {
   event_source_arn = aws_sqs_queue.pipeline["briefing-script"].arn
   function_name    = aws_lambda_function.service["tts"].arn
+  batch_size       = 1
+}
+
+resource "aws_lambda_event_source_mapping" "mixer_from_narration" {
+  event_source_arn = aws_sqs_queue.pipeline["narration-audio"].arn
+  function_name    = aws_lambda_function.service["audio_mixer"].arn
   batch_size       = 1
 }
 

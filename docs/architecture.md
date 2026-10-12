@@ -22,6 +22,8 @@ SES inbound receipt rule
   -> summarizer Lambda
   -> briefing-script SQS
   -> tts Lambda
+  -> narration-audio SQS
+  -> audio-mixer Lambda
   -> generated-episode SQS
   -> rss-generator Lambda
   -> S3 private feed bucket
@@ -34,7 +36,8 @@ SES inbound receipt rule
 | `email-parser` | Parse SES/S3 raw MIME, extract headers and HTML/text bodies | Raw MIME in S3 | `ParsedNewsletterEvent` |
 | `newsletter-cleaner` | Remove newsletter chrome, sponsor/legal/footer sections, produce readable article text | Parsed event | `CleanedNewsletterEvent` |
 | `summarizer` | Produce spoken full-read or morning-briefing script | Cleaned event | `BriefingScriptEvent` |
-| `tts` | Convert script to MP3 through a pluggable provider | Script event | MP3 in S3 plus `GeneratedEpisodeEvent` |
+| `tts` | Convert script to narration MP3 through a pluggable provider | Script event | `NarrationAudioEvent` |
+| `audio-mixer` | Combine narration with optional music, transitions, ambience, fades, and normalization | Narration event | Final MP3 in S3 plus `GeneratedEpisodeEvent` |
 | `rss-generator` | Update private podcast RSS feed with chronological episodes | Episode event | `feed.xml` in S3 |
 
 ## Storage Choices
@@ -45,6 +48,7 @@ Use S3 as the durable system of record for large artifacts:
 - Parsed JSON: `parsed/<tenant_id>/<newsletter_id>.json`
 - Cleaned text: `cleaned/<tenant_id>/<newsletter_id>.txt`
 - Scripts: `scripts/<tenant_id>/<newsletter_id>.txt`
+- Narration: `narration/<tenant_id>/<episode_id>.mp3`
 - Audio: `audio/<tenant_id>/<episode_id>.mp3`
 - RSS: `feeds/<tenant_id>/feed.xml`
 
@@ -68,6 +72,7 @@ Each pipeline edge gets its own SQS queue and dead-letter queue:
 - `parsed-newsletter`
 - `cleaned-newsletter`
 - `briefing-script`
+- `narration-audio`
 - `generated-episode`
 
 This keeps failure domains small. For example, an OpenAI outage should not cause SES parsing retries or re-clean already-cleaned newsletters.
@@ -176,4 +181,3 @@ Use CloudWatch alarms for:
 - Keep one Lambda per stage, but share common contract and storage utilities.
 - Generate RSS from metadata, not by appending XML in-place inside queue handlers.
 - Start with OpenAI TTS, then add Polly fallback behind the provider abstraction.
-

@@ -6,7 +6,7 @@ import os
 from typing import Any
 
 from hearletter_domain.models import S3ObjectRef
-from hearletter_events.contracts import EventEnvelope, GeneratedEpisodePayload, new_id, utc_now_iso
+from hearletter_events.contracts import EventEnvelope, NarrationAudioPayload, new_id, utc_now_iso
 from hearletter_shared.event_codec import dumps_event
 from hearletter_shared.lambda_events import iter_pipeline_events, log_lambda_event
 from hearletter_shared.openai_tts import (
@@ -38,14 +38,17 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     boto3_session = boto3.Session()
     s3_client = boto3_session.client("s3")
     sqs_client = boto3.client("sqs")
-    tts_synthesizer = build_tts_synthesizer(
-        env=os.environ,
-        boto3_session=boto3_session,
-    )
-    output_events = [
-        process_event(pipeline_event, s3_client=s3_client, tts_synthesizer=tts_synthesizer)
-        for pipeline_event in iter_pipeline_events(event)
-    ]
+    output_events = []
+    for pipeline_event in iter_pipeline_events(event):
+        show_style = show_style_from_payload(pipeline_event.get("payload", {}))
+        tts_synthesizer = build_tts_synthesizer(
+            env=os.environ,
+            boto3_session=boto3_session,
+            show_style=show_style,
+        )
+        output_events.append(
+            process_event(pipeline_event, s3_client=s3_client, tts_synthesizer=tts_synthesizer)
+        )
 
     for queue_url in output_queue_urls(os.environ):
         for output_event in output_events:
@@ -62,14 +65,14 @@ def process_event(
     *,
     s3_client: Any | None = None,
     tts_synthesizer: Any | None = None,
-) -> EventEnvelope[GeneratedEpisodePayload]:
-    """Create a generated-episode event from a briefing-scripted event."""
+) -> EventEnvelope[NarrationAudioPayload]:
+    """Create a narration-audio event from a briefing-scripted event."""
 
     now = utc_now_iso()
     tenant_id = str(event["tenant_id"])
     newsletter_id = str(event["newsletter_id"])
     episode_id = new_id("ep")
-    audio_key = f"audio/{tenant_id}/{episode_id}.mp3"
+    audio_key = f"narration/{tenant_id}/{episode_id}.mp3"
     title = str(event["payload"].get("title", f"Morning Briefing - {now[:10]}"))
     byte_length = 0
 
@@ -89,20 +92,20 @@ def process_event(
             ContentType=audio.content_type,
         )
 
-    payload = GeneratedEpisodePayload(
+    payload = NarrationAudioPayload(
         episode_id=episode_id,
         title=title,
-        audio=S3ObjectRef(bucket=os.environ.get("AUDIO_BUCKET", "AUDIO_BUCKET"), key=audio_key),
-        audio_url=f"https://example.invalid/{audio_key}",
+        narration=S3ObjectRef(bucket=os.environ.get("AUDIO_BUCKET", "AUDIO_BUCKET"), key=audio_key),
         mime_type="audio/mpeg",
         byte_length=byte_length,
         duration_seconds=None,
-        published_at=now,
+        generated_at=now,
         notification_email=event["payload"].get("notification_email"),
+        show_style=event["payload"].get("show_style"),
     )
     return EventEnvelope(
         event_id=new_id("evt"),
-        event_type="episode.generated",
+        event_type="narration.audio.generated",
         schema_version="1.0",
         correlation_id=str(event["correlation_id"]),
         tenant_id=tenant_id,
@@ -133,12 +136,17 @@ def output_queue_urls(env: Any) -> list[str]:
 
     return [
         str(env[name])
-        for name in ("EPISODE_QUEUE_URL", "NOTIFICATION_QUEUE_URL")
+        for name in ("NARRATION_QUEUE_URL",)
         if env.get(name)
     ]
 
 
-def build_tts_synthesizer(*, env: Any, boto3_session: Any) -> Any:
+def build_tts_synthesizer(
+    *,
+    env: Any,
+    boto3_session: Any,
+    show_style: dict[str, str] | None = None,
+) -> Any:
     """Build the configured TTS provider."""
 
     provider = str(env.get("TTS_PROVIDER", DEFAULT_TTS_PROVIDER)).strip().lower()
@@ -153,18 +161,77 @@ def build_tts_synthesizer(*, env: Any, boto3_session: Any) -> Any:
         )
     if provider == "openai":
         return build_openai_tts_synthesizer(
-            config=OpenAITTSConfig(
-                api_key=resolve_openai_api_key(env=env, boto3_session=boto3_session),
-                model=env.get("OPENAI_TTS_MODEL", DEFAULT_OPENAI_TTS_MODEL),
-                voice=env.get("OPENAI_TTS_VOICE", DEFAULT_OPENAI_TTS_VOICE),
-                response_format=env.get(
-                    "OPENAI_TTS_RESPONSE_FORMAT",
-                    DEFAULT_OPENAI_TTS_RESPONSE_FORMAT,
-                ),
-                instructions=env.get("OPENAI_TTS_INSTRUCTIONS", DEFAULT_OPENAI_TTS_INSTRUCTIONS),
+            config=openai_config_from_env(
+                env=env,
+                boto3_session=boto3_session,
+                show_style=show_style,
             )
         )
     raise ValueError(f"Unsupported TTS_PROVIDER: {provider}")
+
+
+def openai_config_from_env(
+    *,
+    env: Any,
+    boto3_session: Any,
+    show_style: dict[str, str] | None = None,
+) -> OpenAITTSConfig:
+    """Build OpenAI TTS config from env and optional show style."""
+
+    style = show_style or {}
+    return OpenAITTSConfig(
+        api_key=resolve_openai_api_key(env=env, boto3_session=boto3_session),
+        model=env.get("OPENAI_TTS_MODEL", DEFAULT_OPENAI_TTS_MODEL),
+        voice=env.get("OPENAI_TTS_VOICE") or openai_voice_for_style(style.get("voice")),
+        response_format=env.get(
+            "OPENAI_TTS_RESPONSE_FORMAT",
+            DEFAULT_OPENAI_TTS_RESPONSE_FORMAT,
+        ),
+        instructions=openai_instructions_for_style(
+            base_instructions=env.get("OPENAI_TTS_INSTRUCTIONS", DEFAULT_OPENAI_TTS_INSTRUCTIONS),
+            show_style=style,
+        ),
+    )
+
+
+def show_style_from_payload(payload: Any) -> dict[str, str]:
+    """Return a normalized show style from an event payload."""
+
+    value = payload.get("show_style") if isinstance(payload, dict) else None
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): str(item) for key, item in value.items() if item is not None}
+
+
+def openai_voice_for_style(voice_style: str | None) -> str:
+    """Map semantic voice style to an OpenAI voice."""
+
+    voices = {
+        "calm": DEFAULT_OPENAI_TTS_VOICE,
+        "warm": DEFAULT_OPENAI_TTS_VOICE,
+        "bright": "coral",
+        "deep": "cedar",
+    }
+    if not voice_style:
+        return DEFAULT_OPENAI_TTS_VOICE
+    return voices.get(voice_style.lower(), voice_style)
+
+
+def openai_instructions_for_style(
+    *,
+    base_instructions: str,
+    show_style: dict[str, str],
+) -> str:
+    """Combine base TTS instructions with show style controls."""
+
+    parts = [base_instructions.strip()]
+    voice = show_style.get("voice")
+    pace = show_style.get("pace")
+    if voice:
+        parts.append(f"Voice style: {voice}.")
+    if pace:
+        parts.append(f"Pace: {pace}.")
+    return " ".join(part for part in parts if part)
 
 
 def resolve_openai_api_key(*, env: Any, boto3_session: Any) -> str:
