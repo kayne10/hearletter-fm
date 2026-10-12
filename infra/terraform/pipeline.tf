@@ -9,7 +9,8 @@ locals {
   briefing_builder_name = "${local.name_prefix}-briefing-builder"
   episode_producer_name = "${local.name_prefix}-episode-producer"
 
-  briefing_builder_timeout = 120
+  # 300s leaves room for the Claude script rewrite (client timeout 240s).
+  briefing_builder_timeout = 300
   episode_producer_timeout = 300
 }
 
@@ -157,6 +158,15 @@ data "aws_iam_policy_document" "briefing_builder" {
     actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
     resources = [aws_sqs_queue.raw_email.arn]
   }
+
+  dynamic "statement" {
+    for_each = var.anthropic_api_key_secret_arn != "" ? [var.anthropic_api_key_secret_arn] : []
+    content {
+      sid       = "ReadAnthropicKey"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [statement.value]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "briefing_builder" {
@@ -195,10 +205,13 @@ data "aws_iam_policy_document" "episode_producer" {
     resources = [aws_s3_bucket.audio.arn]
   }
 
-  statement {
-    sid       = "ReadOpenAIKey"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.openai_api_key_secret_arn != "" ? var.openai_api_key_secret_arn : "*"]
+  dynamic "statement" {
+    for_each = var.openai_api_key_secret_arn != "" ? [var.openai_api_key_secret_arn] : []
+    content {
+      sid       = "ReadOpenAIKey"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [statement.value]
+    }
   }
 
   statement {
@@ -258,6 +271,11 @@ resource "aws_lambda_function" "briefing_builder" {
   environment {
     variables = {
       PROCESSED_BUCKET = aws_s3_bucket.processed.bucket
+      # Claude rewrites the script when a key secret is set; otherwise the template is used.
+      ANTHROPIC_API_KEY_SECRET_ARN = var.anthropic_api_key_secret_arn
+      SCRIPT_WRITER                = var.script_writer
+      SCRIPT_MODEL                 = var.script_model
+      SCRIPT_EFFORT                = var.script_effort
     }
   }
 

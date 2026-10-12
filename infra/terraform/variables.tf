@@ -101,3 +101,37 @@ variable "enable_s3_request_metrics" {
   type        = bool
   default     = false
 }
+
+variable "anthropic_api_key_secret_arn" {
+  description = "Secrets Manager ARN holding the Anthropic API key (raw or JSON with api_key). Empty disables the Claude script writer."
+  type        = string
+  default     = ""
+}
+
+variable "script_writer" {
+  description = "claude: Claude rewrites the briefing script (needs anthropic_api_key_secret_arn). template: deterministic script only."
+  type        = string
+  default     = "claude"
+
+  validation {
+    condition     = contains(["claude", "template"], var.script_writer)
+    error_message = "script_writer must be claude or template."
+  }
+}
+
+variable "script_model" {
+  description = "Claude model that writes the briefing script."
+  type        = string
+  default     = "claude-opus-5-5"
+}
+
+variable "script_effort" {
+  description = "Claude effort level for the script rewrite."
+  type        = string
+  default     = "medium"
+
+  validation {
+    condition     = contains(["low", "medium", "high", "xhigh", "max"], var.script_effort)
+    error_message = "script_effort must be one of low, medium, high, xhigh, max."
+  }
+}
