@@ -1,3 +1,0 @@
-# LEGACY: not used by the briefing pipeline. Safe to delete; see docs/briefing-pipeline.md.
-beautifulsoup4>=4.12.3,<5
-

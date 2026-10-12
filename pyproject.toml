@@ -10,10 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12.3",
   "boto3>=1.34.0",
-  "defusedxml>=0.7.1",
-  "feedgen>=1.0.0",
-  "html2text>=2024.2.26",
-  "openai>=1.30.0",
+  "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +24,6 @@ dev = [
 [tool.setuptools.packages.find]
 where = [
   "packages/domain",
-  "packages/types",
   "packages/utils",
   "services/shared",
 ]
@@ -36,7 +32,6 @@ where = [
 testpaths = ["tests"]
 pythonpath = [
   "packages/domain",
-  "packages/types",
   "packages/utils",
   "services/shared",
 ]

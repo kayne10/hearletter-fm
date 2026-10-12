@@ -8,7 +8,6 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from xml.etree import ElementTree
 
 DEFAULT_OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
 DEFAULT_OPENAI_TTS_VOICE = "marin"
@@ -52,11 +51,6 @@ class OpenAITTSSynthesizer:
     def __init__(self, *, config: OpenAITTSConfig, http_post: HttpPost | None = None) -> None:
         self._config = config
         self._http_post = http_post or post_json
-
-    def synthesize_ssml(self, ssml: str) -> OpenAIAudio:
-        """Convert SSML to plain text and synthesize it to MP3 bytes."""
-
-        return self.synthesize(ssml_to_text(ssml))
 
     def synthesize(self, text: str) -> OpenAIAudio:
         """Synthesize plain text (at most max_input_chars) to MP3 bytes."""
@@ -110,18 +104,8 @@ def post_json(url: str, headers: dict[str, str], body: bytes) -> tuple[bytes, st
         return bytes(response.read()), str(response.headers.get("Content-Type", "audio/mpeg"))
 
 
-def ssml_to_text(ssml: str) -> str:
-    """Convert a simple SSML document into plain text for OpenAI TTS."""
-
-    try:
-        root = ElementTree.fromstring(ssml)
-    except ElementTree.ParseError:
-        return normalize_text(ssml)
-    return normalize_text(" ".join(root.itertext()))
-
-
 def normalize_text(value: str) -> str:
-    """Normalize whitespace after SSML text extraction."""
+    """Collapse whitespace before sending text to the API."""
 
     return re.sub(r"\s+", " ", value).strip()
 

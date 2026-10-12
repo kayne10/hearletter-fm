@@ -20,7 +20,6 @@ class PollySynthesisConfig:
     engine: str = DEFAULT_POLLY_ENGINE
     voice_id: str = DEFAULT_POLLY_VOICE_ID
     output_format: str = DEFAULT_POLLY_OUTPUT_FORMAT
-    text_type: str = "ssml"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,22 +40,14 @@ class PollySynthesizer:
         self._polly_client = polly_client
         self._config = config
 
-    def synthesize_ssml(self, ssml: str) -> PollyAudio:
-        """Synthesize SSML to MP3 bytes."""
-
-        return self._synthesize(ssml, text_type=self._config.text_type)
-
     def synthesize(self, text: str) -> PollyAudio:
         """Synthesize plain text (at most max_input_chars) to MP3 bytes."""
 
-        return self._synthesize(text, text_type="text")
-
-    def _synthesize(self, text: str, *, text_type: str) -> PollyAudio:
         response = self._polly_client.synthesize_speech(
             Engine=self._config.engine,
             OutputFormat=self._config.output_format,
             Text=text,
-            TextType=text_type,
+            TextType="text",
             VoiceId=self._config.voice_id,
         )
         stream = response["AudioStream"]

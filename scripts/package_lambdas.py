@@ -41,22 +41,10 @@ SERVICES = [
         extra_files={"briefing.json": BRIEFING_CONFIG},
     ),
     LambdaService(name="episode-producer", source_dir=REPO_ROOT / "services" / "episode-producer"),
-    # LEGACY multi-queue pipeline: remove these with infra/terraform/legacy.tf.
-    LambdaService(name="email-parser", source_dir=REPO_ROOT / "services" / "email-parser"),
-    LambdaService(
-        name="newsletter-cleaner",
-        source_dir=REPO_ROOT / "services" / "newsletter-cleaner",
-    ),
-    LambdaService(name="summarizer", source_dir=REPO_ROOT / "services" / "summarizer"),
-    LambdaService(name="tts", source_dir=REPO_ROOT / "services" / "tts"),
-    LambdaService(name="audio-mixer", source_dir=REPO_ROOT / "services" / "audio-mixer"),
-    LambdaService(name="rss-generator", source_dir=REPO_ROOT / "services" / "rss-generator"),
-    LambdaService(name="notifier", source_dir=REPO_ROOT / "services" / "notifier"),
 ]
 
 SHARED_PACKAGE_ROOTS = [
     REPO_ROOT / "packages" / "domain",
-    REPO_ROOT / "packages" / "types",
     REPO_ROOT / "packages" / "utils",
     REPO_ROOT / "services" / "shared",
 ]

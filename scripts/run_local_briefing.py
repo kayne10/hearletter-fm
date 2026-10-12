@@ -24,7 +24,7 @@ from types import ModuleType
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-for import_root in ("packages/domain", "packages/types", "packages/utils", "services/shared"):
+for import_root in ("packages/domain", "packages/utils", "services/shared"):
     sys.path.insert(0, str(REPO_ROOT / import_root))
 
 from hearletter_shared.config import REPO_CONFIG_PATH, load_briefing_config  # noqa: E402

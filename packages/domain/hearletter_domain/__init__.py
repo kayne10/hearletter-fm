@@ -8,16 +8,12 @@ from hearletter_domain.briefing import (
     StagedNewsletter,
     Story,
 )
-from hearletter_domain.models import AudioArtifact, ContentMode, S3ObjectRef
 
 __all__ = [
-    "AudioArtifact",
     "BriefingConfig",
     "BriefingScript",
-    "ContentMode",
     "ForwardedNewsletter",
     "NewsletterSource",
-    "S3ObjectRef",
     "StagedNewsletter",
     "Story",
 ]

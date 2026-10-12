@@ -6,38 +6,38 @@
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-pytest
+make test
 ```
 
-## Running a Handler Locally
+## Running The Pipeline Locally
 
-Handlers are plain Python functions shaped like AWS Lambda handlers:
+`scripts/run_local_briefing.py` wraps raw MIME files in the same SQS and S3 event shapes Lambda
+receives. It then runs `briefing-builder` and, with `--synthesize`, `episode-producer`. Storage is a
+local folder through `LocalObjectStore`, and emails are printed instead of sent.
 
-```python
-def handler(event: dict[str, object], context: object) -> dict[str, object]:
-    ...
+```bash
+python3 scripts/run_local_briefing.py tests/fixtures/raw_email --min-sources 1
+OPENAI_API_KEY=sk-... python3 scripts/run_local_briefing.py <dir> --synthesize
 ```
 
-For local development, create small JSON fixtures in `tests/fixtures/` and call the handler directly from tests. Keep AWS calls behind shared storage/client abstractions so unit tests can use in-memory fakes.
+Use `--keep` to add emails to an earlier run, which simulates sources arriving in separate batches.
+
+## Handler Design
+
+Each handler is a thin AWS adapter around a pure function that takes an `ObjectStore` and
+callables: `process_batch` for the builder and `produce_episode` for the producer. Tests and the
+local runner call those functions directly with local storage and fakes. No AWS mocking is needed.
 
 ## Environment Variables
 
-Common variables:
-
-- `ARTIFACT_BUCKET`
-- `AUDIO_BUCKET`
-- `FEED_BUCKET`
-- `NEXT_QUEUE_URL`
-- `METADATA_TABLE`
-- `OPENAI_API_KEY_SECRET_ARN`
-- `TTS_PROVIDER`
+| Lambda | Variables |
+| --- | --- |
+| briefing-builder | `PROCESSED_BUCKET`, optional `BRIEFING_CONFIG_PATH` |
+| episode-producer | `AUDIO_BUCKET`, `NOTIFICATION_FROM_EMAIL`, `AUDIO_URL_TTL_SECONDS`, `TTS_PROVIDER`, `OPENAI_API_KEY_SECRET_ARN` (or `OPENAI_API_KEY` locally), `OPENAI_TTS_*`, `POLLY_*` |
 
 ## Testing Strategy
 
-- Unit-test event contract serialization.
-- Unit-test HTML cleaning with representative newsletter fixtures.
-- Unit-test RSS XML output.
-- Integration-test Lambda-to-SQS behavior with LocalStack later if useful.
-
-Avoid making LocalStack mandatory for the first MVP. Most logic should be testable without AWS.
-
+- Forwarded-email parsing against the real Gmail fixture and synthetic Apple Mail and auto-forward cases.
+- Builder behavior: full batch, split batches, redelivery, partial `min_sources`, ignored senders,
+  per-message failures, and conditional-write races.
+- Producer behavior: chunked TTS, one MP3, and exactly one email across retries.

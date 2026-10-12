@@ -1,5 +1,5 @@
 # Core resources shared by the briefing pipeline: SES inbound, raw email, and audio storage.
-# The two-Lambda briefing flow lives in pipeline.tf; the old multi-queue flow in legacy.tf.
+# The two-Lambda briefing flow lives in pipeline.tf; the dashboard in observability.tf.
 
 locals {
   name_prefix           = "${var.project_name}-${var.environment}"

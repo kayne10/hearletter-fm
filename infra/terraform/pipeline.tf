@@ -49,16 +49,6 @@ resource "aws_s3_bucket_public_access_block" "pipeline" {
   restrict_public_buckets = true
 }
 
-moved {
-  from = aws_s3_bucket_public_access_block.private_buckets["raw_email"]
-  to   = aws_s3_bucket_public_access_block.pipeline["raw_email"]
-}
-
-moved {
-  from = aws_s3_bucket_public_access_block.private_buckets["audio"]
-  to   = aws_s3_bucket_public_access_block.pipeline["audio"]
-}
-
 # --- Queues --------------------------------------------------------------------------------
 
 resource "aws_sqs_queue" "raw_email_dlq" {

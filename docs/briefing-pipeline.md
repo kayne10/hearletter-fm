@@ -78,8 +78,6 @@ terraform apply \
   -var="openai_api_key_secret_arn=<secret-arn>"
 ```
 
-The first apply also removes the SES rule's Lambda action. From then on the old parser is no longer
-invoked, and the legacy resources sit idle until you remove them.
 
 ## Known limits
 
@@ -93,46 +91,8 @@ invoked, and the legacy resources sit idle until you remove them.
 - Story extraction in `hearletter_shared/cleaning.py` was tuned on Morning Brew. Check TLDR and The
   Rundown output with the local runner once you have raw samples.
 
-## Old code and infra that can be deleted
+## Legacy pipeline
 
-The legacy pipeline is fully disconnected once the new stack is applied.
-
-### Infrastructure (all in `infra/terraform/legacy.tf`)
-
-- 7 Lambdas: email-parser, newsletter-cleaner, summarizer, tts, audio-mixer, rss-generator, notifier.
-- 12 SQS queues: parsed-newsletter, cleaned-newsletter, briefing-script, narration-audio,
-  generated-episode, and notification-email, each with its DLQ.
-- 6 event source mappings and the SES invoke permission for email-parser.
-- DynamoDB `metadata` table. No code ever read or wrote it.
-- `artifacts` and `feed` S3 buckets and their public-access blocks.
-- Shared `lambda-exec` IAM role, its inline policy, and its policy attachment.
-- Legacy-only variables (`feed_public_read`, `ffmpeg_path`, `mixer_*`, `show_style`) and outputs.
-
-Steps: empty the two buckets, because they have no `force_destroy`. Then delete `legacy.tf` and
-run `terraform apply`.
-
-```bash
-aws s3 rm s3://hearletter-fm-dev-artifacts-20260713210400807900000004 --recursive
-aws s3 rm s3://hearletter-fm-dev-feed-20260713210400807700000003 --recursive
-```
-
-### Code
-
-- `services/email-parser/`, `services/newsletter-cleaner/`, `services/summarizer/`, `services/tts/`,
-  `services/audio-mixer/`, `services/rss-generator/`, `services/notifier/`.
-- `services/shared/hearletter_shared/audio_mixer.py`, `event_codec.py`, and `rss.py`.
-  Delete `rss.py` only if you won't revive RSS; it is an unused stub today.
-- From `lambda_events.py`: `iter_pipeline_events` and `decode_json_object`, which are the only users
-  of `event_codec`.
-- From `openai_tts.py` and `polly.py`: the SSML paths `synthesize_ssml`, `ssml_to_text`, and the
-  `text_type` config.
-- `packages/types/` (the whole `hearletter_events` package), `packages/domain/hearletter_domain/audio.py`
-  and `models.py`, and `estimate_spoken_duration_seconds` in `packages/utils/hearletter_utils/text.py`.
-- `scripts/run_local_pipeline.py` and the `local-pipeline` Makefile target.
-- The legacy entries in `SERVICES` in `scripts/package_lambdas.py`, and the old zips in `artifacts/lambda/`.
-- Tests: `test_audio_mixer.py`, `test_audio_mixer_handler.py`, `test_email_parser.py`,
-  `test_event_codec.py`, `test_local_pipeline.py`, `test_notifier.py`, `test_rss.py`,
-  `test_tts_selector.py`, and the SSML cases in `test_openai_tts.py`.
-- Unused dependencies in `pyproject.toml`: `feedgen`, `defusedxml`, `html2text`, `openai`.
-  The OpenAI client uses `urllib` directly.
-- Docs describing the old flow: `docs/architecture.md`, `docs/event-contracts.md`.
+The original seven-Lambda, twelve-queue pipeline (email-parser through notifier), its DynamoDB
+table, and the artifacts and feed buckets were removed once this flow was verified in production.
+Git history has the old code if anything needs to be recovered.
