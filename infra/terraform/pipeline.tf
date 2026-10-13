@@ -316,9 +316,10 @@ resource "aws_lambda_function" "episode_producer" {
       OPENAI_TTS_MODEL          = var.openai_tts_model
       OPENAI_TTS_VOICE          = var.openai_tts_voice
       OPENAI_TTS_INSTRUCTIONS   = var.openai_tts_instructions
-      POLLY_REGION              = var.aws_region
-      POLLY_ENGINE              = "generative"
-      POLLY_VOICE_ID            = "Joanna"
+      # Polly is called cross-region: the generative engine isn't offered in every region.
+      POLLY_REGION   = var.polly_region
+      POLLY_ENGINE   = var.polly_engine
+      POLLY_VOICE_ID = var.polly_voice_id
     }
   }
 

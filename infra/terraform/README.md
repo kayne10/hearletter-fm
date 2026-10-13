@@ -39,5 +39,6 @@ terraform apply \
 - While SES is in sandbox mode, every forwarding address must also be verified.
 - Set `anthropic_api_key_secret_arn` to have Claude write the script. `script_writer`,
   `script_model` and `script_effort` tune it.
-- Set `tts_provider = "polly"` to switch away from OpenAI without code changes.
+- Set `tts_provider = "polly"` to switch away from OpenAI without code changes. `polly_region`
+  (default us-east-1), `polly_engine` and `polly_voice_id` tune it. us-east-2 has no generative engine.
 - Set `enable_s3_request_metrics = true` for paid S3 request metrics on the dashboard.

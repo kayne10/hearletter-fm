@@ -135,3 +135,26 @@ variable "script_effort" {
     error_message = "script_effort must be one of low, medium, high, xhigh, max."
   }
 }
+
+variable "polly_region" {
+  description = "Region for Polly calls. Independent of aws_region because the generative engine is only offered in some regions (us-east-2 has none)."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "polly_engine" {
+  description = "Polly engine: generative (most natural), long-form, neural, or standard. Must be offered in polly_region for polly_voice_id."
+  type        = string
+  default     = "generative"
+
+  validation {
+    condition     = contains(["generative", "long-form", "neural", "standard"], var.polly_engine)
+    error_message = "polly_engine must be generative, long-form, neural, or standard."
+  }
+}
+
+variable "polly_voice_id" {
+  description = "Polly voice id; must support polly_engine."
+  type        = string
+  default     = "Joanna"
+}
