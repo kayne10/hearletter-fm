@@ -1,6 +1,19 @@
 """Domain models for Hearletter FM."""
 
-from hearletter_domain.models import AudioArtifact, ContentMode, S3ObjectRef
+from hearletter_domain.briefing import (
+    BriefingConfig,
+    BriefingScript,
+    ForwardedNewsletter,
+    NewsletterSource,
+    StagedNewsletter,
+    Story,
+)
 
-__all__ = ["AudioArtifact", "ContentMode", "S3ObjectRef"]
-
+__all__ = [
+    "BriefingConfig",
+    "BriefingScript",
+    "ForwardedNewsletter",
+    "NewsletterSource",
+    "StagedNewsletter",
+    "Story",
+]

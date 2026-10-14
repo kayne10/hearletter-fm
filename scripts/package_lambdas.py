@@ -7,12 +7,17 @@ import argparse
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "artifacts" / "lambda"
 BUILD_ROOT = REPO_ROOT / "artifacts" / "build" / "lambda"
+
+# Must match the Lambda runtime in infra/terraform/pipeline.tf. Dependencies with compiled
+# code (pydantic-core, jiter) are fetched as Linux wheels so zips built on macOS still run.
+LAMBDA_PYTHON_VERSION = "3.11"
+LAMBDA_PLATFORM = "manylinux2014_x86_64"
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +26,7 @@ class LambdaService:
 
     name: str
     source_dir: Path
+    extra_files: dict[str, Path] = field(default_factory=dict)  # zip path -> source file
 
     @property
     def zip_name(self) -> str:
@@ -31,22 +37,19 @@ class LambdaService:
         return self.source_dir / "requirements.txt"
 
 
+BRIEFING_CONFIG = REPO_ROOT / "config" / "briefing.json"
+
 SERVICES = [
-    LambdaService(name="email-parser", source_dir=REPO_ROOT / "services" / "email-parser"),
     LambdaService(
-        name="newsletter-cleaner",
-        source_dir=REPO_ROOT / "services" / "newsletter-cleaner",
+        name="briefing-builder",
+        source_dir=REPO_ROOT / "services" / "briefing-builder",
+        extra_files={"briefing.json": BRIEFING_CONFIG},
     ),
-    LambdaService(name="summarizer", source_dir=REPO_ROOT / "services" / "summarizer"),
-    LambdaService(name="tts", source_dir=REPO_ROOT / "services" / "tts"),
-    LambdaService(name="audio-mixer", source_dir=REPO_ROOT / "services" / "audio-mixer"),
-    LambdaService(name="rss-generator", source_dir=REPO_ROOT / "services" / "rss-generator"),
-    LambdaService(name="notifier", source_dir=REPO_ROOT / "services" / "notifier"),
+    LambdaService(name="episode-producer", source_dir=REPO_ROOT / "services" / "episode-producer"),
 ]
 
 SHARED_PACKAGE_ROOTS = [
     REPO_ROOT / "packages" / "domain",
-    REPO_ROOT / "packages" / "types",
     REPO_ROOT / "packages" / "utils",
     REPO_ROOT / "services" / "shared",
 ]
@@ -90,6 +93,8 @@ def build_service(service: LambdaService, *, output_dir: Path, install_deps: boo
 
     copy_service_source(service, build_dir)
     copy_shared_packages(build_dir)
+    for zip_path_name, source in service.extra_files.items():
+        shutil.copy2(source, build_dir / zip_path_name)
 
     if install_deps and service.requirements_file.exists():
         install_requirements(service.requirements_file, build_dir)
@@ -98,7 +103,7 @@ def build_service(service: LambdaService, *, output_dir: Path, install_deps: boo
         zip_path.unlink()
     archive_base = zip_path.with_suffix("")
     shutil.make_archive(str(archive_base), "zip", build_dir)
-    print(f"built {zip_path.relative_to(REPO_ROOT)}")
+    print(f"built {zip_path}")
 
 
 def copy_service_source(service: LambdaService, build_dir: Path) -> None:
@@ -134,6 +139,13 @@ def install_requirements(requirements_file: Path, target_dir: Path) -> None:
         "--target",
         str(target_dir),
         "--upgrade",
+        "--platform",
+        LAMBDA_PLATFORM,
+        "--implementation",
+        "cp",
+        "--python-version",
+        LAMBDA_PYTHON_VERSION,
+        "--only-binary=:all:",
     ]
     print(f"installing dependencies from {requirements_file.relative_to(REPO_ROOT)}")
     subprocess.run(command, check=True)

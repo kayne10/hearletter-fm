@@ -1,4 +1,4 @@
-.PHONY: test compile local-pipeline package-lambdas package-lambdas-no-deps terraform-fmt terraform-fmt-check
+.PHONY: test compile local-briefing package-lambdas package-lambdas-no-deps terraform-fmt terraform-fmt-check
 
 test:
 	python3 -m pytest
@@ -6,8 +6,8 @@ test:
 compile:
 	python3 -m compileall packages services tests
 
-local-pipeline:
-	python3 scripts/run_local_pipeline.py --input data --output-dir artifacts/local/latest --clean-output
+local-briefing:
+	python3 scripts/run_local_briefing.py tests/fixtures/raw_email --min-sources 1
 
 package-lambdas:
 	python3 scripts/package_lambdas.py

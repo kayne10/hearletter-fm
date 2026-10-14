@@ -32,12 +32,6 @@ variable "lambda_artifact_dir" {
   default     = "../../artifacts/lambda"
 }
 
-variable "feed_public_read" {
-  description = "Whether the RSS/audio buckets are publicly readable by direct S3 URL. Prefer CloudFront later."
-  type        = bool
-  default     = false
-}
-
 variable "notification_from_email" {
   description = "Verified SES email address used as the sender for MP3-ready notifications. Defaults to no-reply@domain_name."
   type        = string
@@ -51,7 +45,7 @@ variable "audio_url_ttl_seconds" {
 }
 
 variable "tts_provider" {
-  description = "TTS provider used by the tts Lambda. Code defaults to polly; this stack currently deploys openai."
+  description = "TTS provider used by episode-producer: openai or polly."
   type        = string
   default     = "openai"
 
@@ -85,60 +79,82 @@ variable "openai_tts_instructions" {
   default     = "Sound like a warm, natural morning podcast host. Keep the delivery conversational, clear, lightly energetic, and never salesy."
 }
 
-variable "ffmpeg_path" {
-  description = "Path to the FFmpeg executable available to the audio-mixer Lambda."
-  type        = string
-  default     = "ffmpeg"
+variable "raw_email_batch_window_seconds" {
+  description = "Max seconds SQS waits to fill a briefing-builder batch (batch size = number of sources)."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.raw_email_batch_window_seconds >= 0 && var.raw_email_batch_window_seconds <= 300
+    error_message = "raw_email_batch_window_seconds must be between 0 and 300."
+  }
 }
 
-variable "mixer_asset_root" {
-  description = "Local asset root in the Lambda runtime or layer."
-  type        = string
-  default     = "/opt/assets"
+variable "log_retention_days" {
+  description = "CloudWatch log retention for the briefing Lambdas."
+  type        = number
+  default     = 30
 }
 
-variable "mixer_normalize" {
-  description = "Whether the audio mixer applies loudness normalization."
+variable "enable_s3_request_metrics" {
+  description = "Enable paid S3 request metrics (PUT/GET counts) for the pipeline buckets and show them on the dashboard."
   type        = bool
-  default     = true
+  default     = false
 }
 
-variable "mixer_allow_passthrough_on_error" {
-  description = "Temporarily allow audio-mixer to publish narration as the final MP3 when FFmpeg is unavailable."
-  type        = bool
-  default     = true
-}
-
-variable "mixer_intro_music" {
-  description = "Intro music path relative to mixer_asset_root. Missing files are skipped."
-  type        = string
-  default     = "intro/morning_theme.mp3"
-}
-
-variable "mixer_outro_music" {
-  description = "Outro music path relative to mixer_asset_root. Missing files are skipped."
-  type        = string
-  default     = "outro/closing_theme.mp3"
-}
-
-variable "mixer_transition_sound" {
-  description = "Transition sound path relative to mixer_asset_root. Leave empty to derive from show_style.transition."
+variable "anthropic_api_key_secret_arn" {
+  description = "Secrets Manager ARN holding the Anthropic API key (raw or JSON with api_key). Empty disables the Claude script writer."
   type        = string
   default     = ""
 }
 
-variable "show_style" {
-  description = "Default semantic show style carried through script, TTS, and audio mixer stages."
-  type = object({
-    voice      = string
-    pace       = string
-    music      = string
-    transition = string
-  })
-  default = {
-    voice      = "calm"
-    pace       = "slow"
-    music      = "soft"
-    transition = "light_chime"
+variable "script_writer" {
+  description = "claude: Claude rewrites the briefing script (needs anthropic_api_key_secret_arn). template: deterministic script only."
+  type        = string
+  default     = "claude"
+
+  validation {
+    condition     = contains(["claude", "template"], var.script_writer)
+    error_message = "script_writer must be claude or template."
   }
+}
+
+variable "script_model" {
+  description = "Claude model that writes the briefing script."
+  type        = string
+  default     = "claude-opus-5-5"
+}
+
+variable "script_effort" {
+  description = "Claude effort level for the script rewrite."
+  type        = string
+  default     = "medium"
+
+  validation {
+    condition     = contains(["low", "medium", "high", "xhigh", "max"], var.script_effort)
+    error_message = "script_effort must be one of low, medium, high, xhigh, max."
+  }
+}
+
+variable "polly_region" {
+  description = "Region for Polly calls. Independent of aws_region because the generative engine is only offered in some regions (us-east-2 has none)."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "polly_engine" {
+  description = "Polly engine: generative (most natural), long-form, neural, or standard. Must be offered in polly_region for polly_voice_id."
+  type        = string
+  default     = "generative"
+
+  validation {
+    condition     = contains(["generative", "long-form", "neural", "standard"], var.polly_engine)
+    error_message = "polly_engine must be generative, long-form, neural, or standard."
+  }
+}
+
+variable "polly_voice_id" {
+  description = "Polly voice id; must support polly_engine."
+  type        = string
+  default     = "Joanna"
 }

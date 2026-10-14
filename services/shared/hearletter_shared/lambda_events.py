@@ -1,12 +1,10 @@
-"""Helpers for Lambda event logging and SQS unwrapping."""
+"""Helpers for structured Lambda logging."""
 
 from __future__ import annotations
 
 import json
 import os
 from typing import Any
-
-from hearletter_shared.event_codec import loads_event
 
 DEFAULT_LOG_CHARS = 8000
 
@@ -40,79 +38,39 @@ def log_lambda_event(stage: str, event: dict[str, Any]) -> None:
 
 
 def summarize_lambda_event(event: dict[str, Any]) -> dict[str, Any]:
-    """Summarize common AWS Lambda event shapes without dumping large payloads."""
+    """Summarize SQS and S3 Lambda events without dumping large payloads."""
 
     records = event.get("Records")
-    if isinstance(records, list):
-        summaries = [
-            summarize_record(record)
-            for record in records[:10]
-            if isinstance(record, dict)
-        ]
-        return {
-            "shape": "records",
-            "record_count": len(records),
-            "records": summaries,
-        }
-
+    if not isinstance(records, list):
+        return {"shape": "direct", "keys": sorted(event.keys())}
     return {
-        "shape": "direct",
-        "keys": sorted(event.keys()),
-        "event_type": event.get("event_type"),
-        "event_id": event.get("event_id"),
-        "correlation_id": event.get("correlation_id"),
-        "tenant_id": event.get("tenant_id"),
-        "newsletter_id": event.get("newsletter_id"),
+        "shape": "records",
+        "record_count": len(records),
+        "records": [summarize_record(item) for item in records[:10] if isinstance(item, dict)],
     }
 
 
 def summarize_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Summarize an AWS event record."""
-
-    if "ses" in record:
-        mail = record.get("ses", {}).get("mail", {})
-        receipt = record.get("ses", {}).get("receipt", {})
-        return {
-            "source": "ses",
-            "message_id": mail.get("messageId"),
-            "mail_source": mail.get("source"),
-            "destination": mail.get("destination"),
-            "receipt_action_type": receipt.get("action", {}).get("type"),
-        }
+    """Summarize one SQS record (wrapping an S3 notification) or one S3 record."""
 
     if "body" in record:
-        body = str(record.get("body", ""))
-        decoded = decode_json_object(body)
+        decoded = decode_json_object(str(record.get("body", ""))) or {}
         return {
             "source": "sqs",
             "message_id": record.get("messageId"),
-            "event_type": decoded.get("event_type") if decoded else None,
-            "event_id": decoded.get("event_id") if decoded else None,
-            "correlation_id": decoded.get("correlation_id") if decoded else None,
-            "tenant_id": decoded.get("tenant_id") if decoded else None,
-            "newsletter_id": decoded.get("newsletter_id") if decoded else None,
-            "body_chars": len(body),
+            "s3_keys": [s3_key(inner) for inner in decoded.get("Records", []) if "s3" in inner],
         }
-
+    if "s3" in record:
+        return {"source": "s3", "event_name": record.get("eventName"), "s3_key": s3_key(record)}
     return {
         "source": record.get("eventSource") or record.get("EventSource") or "unknown",
         "keys": sorted(record.keys()),
     }
 
 
-def iter_pipeline_events(event: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return pipeline event dictionaries from either direct or SQS Lambda events."""
-
-    records = event.get("Records")
-    if not isinstance(records, list):
-        return [event]
-
-    pipeline_events: list[dict[str, Any]] = []
-    for record in records:
-        if not isinstance(record, dict) or "body" not in record:
-            continue
-        pipeline_events.append(loads_event(str(record["body"])))
-    return pipeline_events
+def s3_key(record: dict[str, Any]) -> str:
+    s3 = record.get("s3", {})
+    return f"{s3.get('bucket', {}).get('name')}/{s3.get('object', {}).get('key')}"
 
 
 def decode_json_object(value: str) -> dict[str, Any] | None:
@@ -132,3 +90,9 @@ def truncate_value(value: Any, *, max_chars: int) -> str:
     if len(serialized) <= max_chars:
         return serialized
     return f"{serialized[:max_chars]}...<truncated {len(serialized) - max_chars} chars>"
+
+
+def log_json(message: str, **fields: Any) -> None:
+    """Emit one structured CloudWatch log line."""
+
+    print(json.dumps({"message": message, **fields}, default=str, sort_keys=True))

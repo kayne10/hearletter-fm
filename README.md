@@ -2,34 +2,34 @@
 
 Hearletter FM turns forwarded email newsletters into a private, podcast-like morning audio briefing.
 
-Core flow:
+Core flow (see [docs/briefing-pipeline.md](docs/briefing-pipeline.md)):
 
 ```text
-Forward newsletter -> SES inbound -> S3 raw MIME -> parse -> clean -> summarize -> TTS -> mix -> MP3 + email link
+Forward newsletters -> SES -> S3 raw MIME -> SQS (batch) -> briefing-builder -> script in S3
+  -> episode-producer -> one MP3 + email link from no-reply@
 ```
 
-This repository is intentionally serverless-first and event-driven. The MVP favors small Lambda services connected by SQS queues, S3 for durable artifacts, and a private RSS feed that podcast apps can subscribe to.
+Newsletter sources are managed in [config/briefing.json](config/briefing.json).
+
+This repository is intentionally serverless-first and event-driven. Two Lambdas, one SQS queue, and S3 as the system of record keep it cheap and easy to reason about.
 
 ## Repository Layout
 
 ```text
 hearletter-fm/
-├── docs/                 # Architecture notes and implementation plan
+├── config/
+│   └── briefing.json       # Newsletter sources that make up the morning briefing
+├── docs/                   # Pipeline design, bootstrap checklist, plans
 ├── infra/
-│   └── terraform/        # AWS infrastructure skeleton
+│   └── terraform/          # AWS stack (SES, S3, SQS, Lambda, CloudWatch dashboard)
 ├── packages/
-│   ├── domain/           # Domain models
-│   ├── types/            # Event contracts
-│   └── utils/            # Shared utility helpers
+│   ├── domain/             # Briefing domain models and config types
+│   └── utils/              # Text helpers
+├── scripts/                # Packaging, local runner, raw email inspector
 ├── services/
-│   ├── email-parser/     # Raw MIME -> ParsedNewsletterEvent
-│   ├── newsletter-cleaner/# Parsed -> Cleaned
-│   ├── summarizer/       # Cleaned -> Spoken script
-│   ├── tts/              # Script -> narration MP3
-│   ├── audio-mixer/      # Narration/assets -> final episode MP3
-│   ├── rss-generator/    # Episode metadata -> feed.xml
-│   ├── notifier/         # Episode metadata -> completion email
-│   └── shared/           # Lambda/service helpers
+│   ├── briefing-builder/   # SQS batch of raw emails -> one daily script
+│   ├── episode-producer/   # Script -> MP3 -> email
+│   └── shared/             # Parsing, cleaning, script, TTS, storage, notification
 └── tests/
 ```
 
@@ -39,15 +39,17 @@ hearletter-fm/
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-pytest
+make test
 ```
 
-For local imports without packaging a Lambda bundle, the test configuration adds these roots to `PYTHONPATH`:
+Run the builder against raw MIME files on disk. Output uses the same key layout as S3, under
+`artifacts/local/briefing/`:
 
-- `packages/domain`
-- `packages/types`
-- `packages/utils`
-- `services/shared`
+```bash
+make local-briefing                                            # the Morning Brew fixture
+python3 scripts/run_local_briefing.py <dir-of-raw-emails>     # your own samples
+OPENAI_API_KEY=sk-... python3 scripts/run_local_briefing.py <dir> --synthesize   # also make the MP3
+```
 
 ## Inspecting A Raw SES Email
 
@@ -70,151 +72,61 @@ To save decoded non-text parts such as inline images:
 python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
 ```
 
-## Running The Pipeline Locally
+## Managing Newsletter Sources
 
-Use local samples to generate stage-by-stage files without invoking AWS:
+Edit [config/briefing.json](config/briefing.json), then package and apply. The SQS batch size is
+derived from the number of sources. See [docs/briefing-pipeline.md](docs/briefing-pipeline.md) for
+every field.
 
-```bash
-python3 scripts/run_local_pipeline.py --input data --output-dir artifacts/local/latest --clean-output
-```
+## Script Writing
 
-You can also run a single raw MIME or decoded text file:
-
-```bash
-python3 scripts/run_local_pipeline.py --input tests/fixtures/raw_email
-python3 scripts/run_local_pipeline.py --input data/01_email_with_body.txt
-```
-
-The runner writes per-sample folders under `artifacts/local/` with each stage's input and output:
-
-- `01_email_parser/body.txt`
-- `01_email_parser/body.html`
-- `02_newsletter_cleaner/clean_text.txt`
-- `02_newsletter_cleaner/story_candidates.json`
-- `03_podcast_context/podcast_context.json`
-- `03_podcast_context/agent_prompt.txt`
-- `03_podcast_context/polly_ssml.xml`
-
-This local runner intentionally stops before audio generation by default. The goal is to master newsletter parsing, cleanup, story extraction, and provider-ready script context before invoking a TTS provider.
-
-To synthesize a local MP3 with Amazon Polly:
-
-```bash
-python3 scripts/run_local_pipeline.py \
-  --input data \
-  --output-dir artifacts/local/latest \
-  --clean-output \
-  --synthesize-audio \
-  --polly-region us-east-1 \
-  --polly-engine generative \
-  --polly-voice-id Joanna
-```
-
-MP3 files are written to each sample's `04_polly_audio/episode.mp3`.
-
-## Audio Mixer
-
-The audio mixer is a separate stage after TTS. TTS only creates narration audio; the mixer owns the final podcast episode. The shared mixer domain models live in `hearletter_domain.audio`, and the FFmpeg implementation lives in `hearletter_shared.audio_mixer`.
-
-The deployed mixer can run narration-only today. When you add assets, put them in a Lambda layer or container image under:
-
-```text
-/opt/assets/
-├── intro/morning_theme.mp3
-├── transitions/soft_chime.mp3
-├── ambience/rain.mp3
-└── outro/closing_theme.mp3
-```
-
-The default Terraform config looks for `intro/morning_theme.mp3` and `outro/closing_theme.mp3`. Missing files are skipped, so you can deploy before the asset set is final.
-
-Until FFmpeg is packaged into the Lambda runtime, `mixer_allow_passthrough_on_error = true` lets the audio mixer publish the narration MP3 as the final episode if the `ffmpeg` executable is missing. Turn that off after adding an FFmpeg Lambda layer or container image.
-
-You can control the show style with Terraform:
-
-```hcl
-show_style = {
-  voice      = "calm"
-  pace       = "slow"
-  music      = "soft"
-  transition = "light_chime"
-}
-```
-
-Current mappings:
-
-- `voice = "calm"` uses OpenAI voice `marin`; `bright` uses `coral`; `deep` uses `cedar`.
-- `pace = "slow"` lowers Polly SSML prosody and adds slow-paced OpenAI voice instructions.
-- `music = "soft"` prefers `intro/minimalist_intro.mp3`.
-- `transition = "light_chime"` prefers `transitions/soft_chime.mp3`.
+Claude (`claude-opus-5-5` by default) rewrites each day's stories into a podcast-style script
+when `anthropic_api_key_secret_arn` is set. Any failure falls back to the template script. See
+[docs/briefing-pipeline.md](docs/briefing-pipeline.md#script-writing-with-claude).
 
 ## TTS Providers
 
-The TTS Lambda supports a provider switch with `TTS_PROVIDER`:
+`episode-producer` picks a provider with `TTS_PROVIDER` (Terraform variable `tts_provider`):
 
-- `polly` is the code default and uses Amazon Polly SSML.
-- `openai` converts the generated SSML to plain text and calls OpenAI speech synthesis.
+- `openai` (deployed default): `gpt-4o-mini-tts`, voice `marin` unless `openai_tts_voice` is set.
+- `polly`: Amazon Polly generative engine, voice Joanna. Polly is called in `polly_region`
+  (default us-east-1), because us-east-2 doesn't offer the generative engine.
 
-Terraform currently sets `tts_provider = "openai"` so you can try OpenAI first. The default OpenAI config is:
+Long scripts are split at paragraph and sentence boundaries to fit each provider's request limit,
+and the MP3 chunks are joined into one file.
 
-```text
-OPENAI_TTS_MODEL=gpt-4o-mini-tts
-OPENAI_TTS_VOICE=
-OPENAI_TTS_RESPONSE_FORMAT=mp3
-```
+The OpenAI key lives in Secrets Manager as the raw key or JSON like `{"api_key":"sk-..."}`.
 
-Create an AWS Secrets Manager secret containing either the raw OpenAI API key or JSON like `{"api_key":"sk-..."}`, then pass its ARN:
+## Observability
 
-```bash
-terraform plan \
-  -var="tts_provider=openai" \
-  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:123456789012:secret:hearletter/openai-api-key-AbCdEf"
-```
-
-## Emailing Finished MP3 Links
-
-The parser carries the SES `mail.source` address through the pipeline as `notification_email`. After the audio mixer writes the final MP3, it publishes the generated episode event to both:
-
-- `generated-episode`, consumed by the RSS generator
-- `notification-email`, consumed by the notifier
-
-The notifier sends a SES email with a presigned S3 link to the private MP3. Terraform defaults the sender to `no-reply@<domain_name>`; override it with `notification_from_email` if you verify a different sender identity.
-
-## Lambda Event Troubleshooting
-
-Each Lambda logs a compact JSON event summary to CloudWatch when invoked. To inspect the parser and cleaner logs:
+`terraform output dashboard_url` links to a CloudWatch dashboard covering S3, SQS, both Lambdas,
+SES sending, and the pipeline's structured log events. To tail logs:
 
 ```bash
-aws logs tail /aws/lambda/hearletter-fm-dev-email-parser --follow --region us-east-2
-aws logs tail /aws/lambda/hearletter-fm-dev-newsletter-cleaner --follow --region us-east-2
+aws logs tail /aws/lambda/hearletter-fm-dev-briefing-builder --follow --region us-east-2
+aws logs tail /aws/lambda/hearletter-fm-dev-episode-producer --follow --region us-east-2
 ```
 
-By default, logs include event shape, record counts, SQS message IDs, and pipeline IDs. To temporarily log truncated full events, set the Lambda environment variable:
-
-```text
-LOG_FULL_EVENTS=true
-```
-
-Turn it back off after debugging to avoid noisy CloudWatch logs.
+Set `LOG_FULL_EVENTS=true` on a Lambda to log truncated full events while debugging.
 
 ## Deployment
+
 ```bash
-python scripts/package_lambdas.py
+make package-lambdas
 
 cd infra/terraform
 terraform apply \
-  -var="tts_provider=openai" \
-  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:112894377436:secret:hearletter/openai-api-key-jxNQKi" \
   -var="aws_region=us-east-2" \
   -var="domain_name=beta.hearletter.fm" \
-  -var="inbound_recipient=listen@beta.hearletter.fm"
+  -var="inbound_recipient=listen@beta.hearletter.fm" \
+  -var="openai_api_key_secret_arn=arn:aws:secretsmanager:us-east-2:112894377436:secret:hearletter/openai-api-key-jxNQKi" \
+  -var="anthropic_api_key_secret_arn=<anthropic-secret-arn>"
 ```
 
-## Architecture Docs
+## Docs
 
-- [Architecture](docs/architecture.md)
-- [Event Contracts](docs/event-contracts.md)
-- [MVP Plan](docs/mvp-plan.md)
-- [Milestones](docs/milestones.md)
+- [Briefing Pipeline](docs/briefing-pipeline.md)
 - [AWS Bootstrap Checklist](docs/aws-bootstrap.md)
 - [Local Development](docs/local-development.md)
+- [MVP Plan](docs/mvp-plan.md)
+- [Milestones](docs/milestones.md)
