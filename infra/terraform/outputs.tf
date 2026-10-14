@@ -40,3 +40,8 @@ output "ses_receipt_rule_set" {
 output "dashboard_url" {
   value = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${aws_cloudwatch_dashboard.briefing_pipeline.dashboard_name}"
 }
+
+output "briefing_flush_schedule" {
+  description = "Daily deadline that builds the briefing from whatever has arrived."
+  value       = local.briefing_flush_at == null ? "disabled" : "${local.briefing_flush_at} ${local.briefing_config.timezone}"
+}

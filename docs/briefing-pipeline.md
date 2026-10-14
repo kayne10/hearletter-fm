@@ -25,7 +25,11 @@ Two Lambdas, one work queue, two dead-letter queues.
 
 | Field | Meaning |
 | --- | --- |
-| `sources[]` | `email` (original newsletter sender) and `name` (spoken in the episode). Order = episode order. |
+| `sources[]` | `email` (canonical sender) and `name` (spoken in the episode). Order = episode order. |
+| `sources[].aliases` | Other exact sender addresses, e.g. Morning Brew's `morningbrew@mail.sailthru.com`. |
+| `sources[].domains` | Sender domains, subdomains included. Never list a shared email-provider domain like `sailthru.com`. |
+| `sources[].sender_names` | From display names, case-insensitive. Last resort when the address is new. |
+| `flush_at` | Local `HH:MM` deadline. At that time the episode is built from whatever has arrived. `null` disables it. |
 | `min_sources` | Sources needed before the script is built. `null` means all of them. |
 | `max_stories_per_source` | Stories read from each newsletter. |
 | `timezone` | Decides which calendar day an email belongs to. |
@@ -35,12 +39,22 @@ Two Lambdas, one work queue, two dead-letter queues.
 The file is bundled into the briefing-builder zip, and Terraform reads it to set the SQS batch size.
 Changing it means `make package-lambdas` then `terraform apply`.
 
+Matching tries exact addresses and aliases first, then domains, then display names. Anything
+that still doesn't match shows up as `unconfigured_source:<name> <address>` in the builder's
+`ignored` log, which is the dashboard's pipeline-events table. Add that address as an alias.
+
 ## Why staging, not just batching
 
 SQS batching is best-effort. Lambda polls with several pollers, and the 60-second window closes
 with whatever has arrived, so three forwards can land in separate invocations. The builder
 therefore stages each newsletter under the forwarder and local date, and writes the script only
 when the required sources are all present. The batch is just the wake-up call.
+
+The `flush_at` deadline covers the opposite failure: a newsletter that never arrives, or arrives
+from an address the config doesn't recognise. An EventBridge Scheduler rule invokes the builder
+with `{"action": "flush"}` at that local time. It builds today's script from whatever is staged,
+as long as at least one source is present. A newsletter arriving after the deadline is ignored for
+that day, because the script already exists.
 
 ## Script writing with Claude
 
@@ -111,8 +125,8 @@ terraform apply \
 - Presigned links are signed with the Lambda role's temporary credentials. They stop working when
   those credentials expire (hours), even though the email says 7 days. Serving MP3s through
   CloudFront with signed URLs, or attaching small MP3s to the email, fixes this.
-- If a configured newsletter never arrives, that day has no episode. Lower `min_sources` to accept
-  partial days. A scheduled "flush at 9am" invocation is the natural next step.
+- With `flush_at` set, a missing newsletter delays the episode until the deadline and leaves that
+  newsletter out. Without it, the day waits indefinitely.
 - Claude writes the script, but the voice is still OpenAI TTS by default, because Claude has
   no text-to-speech. `tts_provider = "polly"` removes the OpenAI dependency at some cost to voice
   quality.

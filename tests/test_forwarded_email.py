@@ -14,6 +14,7 @@ def test_parses_real_gmail_forward_of_morning_brew() -> None:
 
     assert newsletter.forwarder == "tkayne10@gmail.com"
     assert newsletter.source_email == "crew@morningbrew.com"
+    assert newsletter.source_display_name == "Morning Brew"
     assert newsletter.subject == "☕ Apple of discord"
     assert newsletter.received_at == "2026-07-13T21:29:46Z"
     assert newsletter.text is not None

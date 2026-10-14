@@ -360,3 +360,74 @@ resource "aws_s3_bucket_notification" "processed" {
 
   depends_on = [aws_lambda_permission.allow_processed_bucket]
 }
+
+# --- Daily deadline ------------------------------------------------------------------------
+# At flush_at (local time, from config/briefing.json) the builder builds today's briefing from
+# whatever has been staged, so a missing or unrecognised newsletter can't block the episode.
+
+locals {
+  briefing_flush_at = try(local.briefing_config.flush_at, null)
+  briefing_flush_hm = local.briefing_flush_at == null ? [] : split(":", local.briefing_flush_at)
+}
+
+data "aws_iam_policy_document" "scheduler_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["scheduler.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+resource "aws_iam_role" "briefing_flush_scheduler" {
+  count              = local.briefing_flush_at == null ? 0 : 1
+  name               = "${local.name_prefix}-briefing-flush-scheduler"
+  assume_role_policy = data.aws_iam_policy_document.scheduler_assume.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy" "briefing_flush_scheduler" {
+  count = local.briefing_flush_at == null ? 0 : 1
+  name  = "${local.name_prefix}-briefing-flush-scheduler"
+  role  = aws_iam_role.briefing_flush_scheduler[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.briefing_builder.arn
+      }
+    ]
+  })
+}
+
+resource "aws_scheduler_schedule" "briefing_flush" {
+  count = local.briefing_flush_at == null ? 0 : 1
+  name  = "${local.name_prefix}-briefing-flush"
+
+  schedule_expression          = "cron(${tonumber(local.briefing_flush_hm[1])} ${tonumber(local.briefing_flush_hm[0])} * * ? *)"
+  schedule_expression_timezone = local.briefing_config.timezone
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.briefing_builder.arn
+    role_arn = aws_iam_role.briefing_flush_scheduler[0].arn
+    input    = jsonencode({ action = "flush" })
+
+    retry_policy {
+      maximum_retry_attempts       = 3
+      maximum_event_age_in_seconds = 3600
+    }
+  }
+}

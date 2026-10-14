@@ -8,6 +8,10 @@ staged in the processed bucket under its forwarder and local date, and the scrip
 once every required source for that day is present. A conditional write makes the script
 creation exactly-once even when two invocations race.
 
+A scheduled "flush" invocation at the config's flush_at local time is the deadline: it builds
+today's briefing from whatever has been staged, so a missing or unrecognised newsletter can't
+block the episode.
+
 When an Anthropic key is configured, Claude rewrites the template script into a podcast-style
 script. Any Claude failure keeps the template text, so the episode is never blocked.
 """
@@ -38,6 +42,7 @@ if TYPE_CHECKING:  # the writer pulls in anthropic/pydantic; template mode doesn
 
 SES_SETUP_KEY_SUFFIX = "AMAZON_SES_SETUP_NOTIFICATION"
 SCRIPT_FILE_NAME = "script.json"
+FLUSH_ACTION = "flush"
 
 _config: BriefingConfig | None = None
 _script_writer: ScriptWriter | None = None
@@ -64,6 +69,16 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
 
     log_lambda_event("briefing-builder", event)
     s3_client = boto3.client("s3")
+    if event.get("action") == FLUSH_ACTION:
+        results = flush_due_briefings(
+            processed=S3ObjectStore(bucket=os.environ["PROCESSED_BUCKET"], s3_client=s3_client),
+            config=get_config(),
+            now=datetime.now(UTC),
+            script_writer=get_script_writer(),
+        )
+        log_json("briefing_flush_processed", briefings=results)
+        return {"briefings": results}
+
     outcome = process_batch(
         event.get("Records", []),
         read_raw=lambda ref: S3ObjectStore(bucket=ref.bucket, s3_client=s3_client).get_bytes(
@@ -195,9 +210,10 @@ def stage_raw_email(
         return None, "missing_forwarder"
     if not config.is_forwarder_allowed(newsletter.forwarder):
         return None, f"forwarder_not_allowed:{newsletter.forwarder}"
-    source = config.source_for(newsletter.source_email)
+    source = config.source_for(newsletter.source_email, newsletter.source_display_name)
     if source is None:
-        return None, f"unconfigured_source:{newsletter.source_email}"
+        sender = f"{newsletter.source_display_name or ''} <{newsletter.source_email}>".strip()
+        return None, f"unconfigured_source:{sender}"
 
     clean_text, _ = clean_newsletter_content(html=newsletter.html, text=newsletter.text)
     candidates = extract_story_candidates(clean_text, max_stories=config.max_stories_per_source)
@@ -224,8 +240,12 @@ def finalize_briefing(
     config: BriefingConfig,
     created_at: str,
     script_writer: ScriptWriter | None = None,
+    required_sources: int | None = None,
 ) -> dict[str, Any]:
-    """Write the day's script once enough configured sources are staged."""
+    """Write the day's script once enough configured sources are staged.
+
+    required_sources overrides the config's threshold (the deadline flush passes 1).
+    """
 
     key = script_key(forwarder, episode_date)
     if processed.exists(key):
@@ -238,7 +258,7 @@ def finalize_briefing(
     ]
     staged = [item for item in staged if config.source_for(item.source_email) is not None]
     present = {item.source_email for item in staged}
-    if len(present) < config.required_source_count:
+    if len(present) < (required_sources or config.required_source_count):
         missing = [source.email for source in config.sources if source.email not in present]
         return {"status": "waiting", "present": sorted(present), "missing": missing}
 
@@ -284,6 +304,38 @@ def rewrite_script(
     return dataclasses.replace(
         script, text=text, writer=script_writer.name, template_text=script.text
     )
+
+
+def flush_due_briefings(
+    *,
+    processed: ObjectStore,
+    config: BriefingConfig,
+    now: datetime,
+    script_writer: ScriptWriter | None = None,
+) -> list[dict[str, Any]]:
+    """Deadline run: build today's briefing for every forwarder with anything staged."""
+
+    episode_date = now.astimezone(ZoneInfo(config.timezone)).date().isoformat()
+    forwarders = sorted(
+        {
+            str(get_json(processed, key)["forwarder"])
+            for key in processed.list_keys("inbox/")
+            if key.endswith(".json") and key.split("/")[2:3] == [episode_date]
+        }
+    )
+    results: list[dict[str, Any]] = []
+    for forwarder in forwarders:
+        status = finalize_briefing(
+            forwarder=forwarder,
+            episode_date=episode_date,
+            processed=processed,
+            config=config,
+            created_at=iso(now),
+            script_writer=script_writer,
+            required_sources=1,
+        )
+        results.append({"forwarder": forwarder, "episode_date": episode_date, **status})
+    return results
 
 
 def inbox_prefix(forwarder: str, episode_date: str) -> str:

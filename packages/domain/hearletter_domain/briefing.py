@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 _SLUG_RE = re.compile(r"[^a-z0-9._-]+")
+_LOCAL_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 def slugify(value: str) -> str:
@@ -18,14 +19,32 @@ def slugify(value: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class NewsletterSource:
-    """A newsletter sender that is allowed into the morning briefing."""
+    """A newsletter that is allowed into the morning briefing.
+
+    `email` is the canonical id (staging keys, ordering). Newsletters change sending addresses
+    (e.g. Morning Brew also sends from its email provider, mail.sailthru.com), so a source also
+    matches extra addresses, sender domains (subdomains included), and From display names.
+    """
 
     email: str
     name: str
+    aliases: tuple[str, ...] = ()
+    domains: tuple[str, ...] = ()
+    sender_names: tuple[str, ...] = ()
 
     @property
     def slug(self) -> str:
         return slugify(self.email)
+
+    def matches_address(self, email: str) -> bool:
+        return email == self.email or email in self.aliases
+
+    def matches_domain(self, email: str) -> bool:
+        domain = email.rpartition("@")[2]
+        return any(domain == d or domain.endswith(f".{d}") for d in self.domains)
+
+    def matches_sender_name(self, display_name: str) -> bool:
+        return display_name in self.sender_names
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,12 +57,15 @@ class BriefingConfig:
     max_stories_per_source: int = 3
     min_sources: int | None = None
     allowed_forwarders: tuple[str, ...] = ()
+    flush_at: str | None = None  # local HH:MM deadline to build with whatever has arrived
 
     def __post_init__(self) -> None:
         if not self.sources:
             raise ValueError("Briefing config must define at least one source")
         if self.min_sources is not None and not 1 <= self.min_sources <= len(self.sources):
             raise ValueError("min_sources must be between 1 and the number of sources")
+        if self.flush_at is not None and not _LOCAL_TIME_RE.match(self.flush_at):
+            raise ValueError("flush_at must be a 24-hour local time like 08:00")
 
     @property
     def required_source_count(self) -> int:
@@ -51,13 +73,24 @@ class BriefingConfig:
 
         return self.min_sources or len(self.sources)
 
-    def source_for(self, email: str | None) -> NewsletterSource | None:
-        """Return the configured source for a sender address, if any."""
+    def source_for(
+        self, email: str | None, display_name: str | None = None
+    ) -> NewsletterSource | None:
+        """Match a sender: exact address/alias first, then domain, then display name."""
 
-        if not email:
-            return None
-        normalized = email.strip().lower()
-        return next((source for source in self.sources if source.email == normalized), None)
+        address = (email or "").strip().lower()
+        name = (display_name or "").strip().lower()
+        tiers = [
+            (address, NewsletterSource.matches_address),
+            (address, NewsletterSource.matches_domain),
+            (name, NewsletterSource.matches_sender_name),
+        ]
+        for value, matches in tiers:
+            if value:
+                found = next((source for source in self.sources if matches(source, value)), None)
+                if found is not None:
+                    return found
+        return None
 
     def is_forwarder_allowed(self, email: str) -> bool:
         """An empty allow-list accepts any forwarder."""
@@ -78,6 +111,7 @@ class ForwardedNewsletter:
     received_at: str
     text: str | None
     html: str | None
+    source_display_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

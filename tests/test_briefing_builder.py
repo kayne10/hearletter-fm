@@ -10,7 +10,15 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from briefing_fixtures import FORWARDER, MORNING_BREW, RUNDOWN, TLDR, UNCONFIGURED, sqs_record
+from briefing_fixtures import (
+    FORWARDER,
+    MORNING_BREW,
+    RUNDOWN,
+    TLDR,
+    UNCONFIGURED,
+    forwarded_email,
+    sqs_record,
+)
 from hearletter_domain.briefing import BriefingConfig
 from hearletter_shared.config import REPO_CONFIG_PATH, load_briefing_config
 from hearletter_shared.object_store import LocalObjectStore
@@ -115,7 +123,8 @@ def test_unconfigured_source_is_ignored(store: LocalObjectStore, config: Briefin
     outcome = run({"x": UNCONFIGURED}, store=store, config=config)
 
     assert outcome.staged == [] and outcome.failed_message_ids == []
-    assert outcome.ignored == [{"key": "x", "reason": "unconfigured_source:hello@randomnews.com"}]
+    reason = "unconfigured_source:Random News <hello@randomnews.com>"
+    assert outcome.ignored == [{"key": "x", "reason": reason}]
 
 
 def test_disallowed_forwarder_is_ignored(store: LocalObjectStore, config: BriefingConfig) -> None:
@@ -246,3 +255,79 @@ def test_ai_writer_not_called_while_waiting_or_after_built(
     run_with_writer(store, config, writer)
     run_with_writer(store, config, writer)
     assert writer.calls == 1
+
+
+@pytest.mark.parametrize(
+    ("sender_email", "sender_name"),
+    [
+        ("morningbrew@mail.sailthru.com", "Morning Brew"),  # alias (the 2026-10-14 miss)
+        ("hello@news.morningbrew.com", "Brew Crew"),  # subdomain of a configured domain
+        ("someone@unknown-esp.com", "Morning Brew"),  # display name only
+    ],
+)
+def test_morning_brew_matches_alias_domain_or_name(
+    store: LocalObjectStore, config: BriefingConfig, sender_email: str, sender_name: str
+) -> None:
+    brew = forwarded_email(
+        source_email=sender_email,
+        source_name=sender_name,
+        subject="Character flaws",
+        topics=["Starbucks", "Delta"],
+    )
+    outcome = run({"a": TLDR, "b": brew, "c": RUNDOWN}, store=store, config=config)
+
+    assert outcome.ignored == []
+    assert "inbox/reader_example.com/2026-10-12/crew_morningbrew.com.json" in outcome.staged
+    assert outcome.briefings[0]["status"] == "built"
+
+
+def test_shared_email_provider_domain_alone_does_not_match(config: BriefingConfig) -> None:
+    assert config.source_for("othernews@mail.sailthru.com", "Other News") is None
+
+
+def test_flush_builds_today_from_partial_sources(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    waiting = run({"a": TLDR, "c": RUNDOWN}, store=store, config=config)
+    assert waiting.briefings[0]["status"] == "waiting"
+
+    deadline = datetime(2026, 10, 12, 14, 0, tzinfo=UTC)  # 08:00 in America/Denver
+    results = builder.flush_due_briefings(processed=store, config=config, now=deadline)
+
+    assert results == [
+        {
+            "forwarder": FORWARDER,
+            "episode_date": "2026-10-12",
+            "status": "built",
+            "script_key": SCRIPT_KEY,
+            "writer": "template",
+        }
+    ]
+    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    assert script["sources"] == ["dan@tldrnewsletter.com", "news@daily.therundown.ai"]
+
+    again = builder.flush_due_briefings(processed=store, config=config, now=deadline)
+    assert again[0]["status"] == "already_built"
+
+
+def test_flush_ignores_other_days_and_empty_days(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"a": TLDR}, store=store, config=config)
+    next_day = datetime(2026, 10, 13, 14, 0, tzinfo=UTC)
+
+    assert builder.flush_due_briefings(processed=store, config=config, now=next_day) == []
+    assert not store.exists(SCRIPT_KEY)
+
+
+def test_handler_routes_flush_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        builder, "flush_due_briefings", lambda **kwargs: calls.append(kwargs) or ["ok"]
+    )
+    monkeypatch.setattr(builder, "get_config", lambda: None)
+    monkeypatch.setattr(builder, "get_script_writer", lambda: None)
+    monkeypatch.setenv("PROCESSED_BUCKET", "processed")
+
+    assert builder.handler({"action": "flush"}, None) == {"briefings": ["ok"]}
+    assert len(calls) == 1

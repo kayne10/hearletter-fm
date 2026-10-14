@@ -36,12 +36,10 @@ def load_briefing_config(path: Path | None = None) -> BriefingConfig:
 def parse_briefing_config(raw: Mapping[str, Any]) -> BriefingConfig:
     """Build a BriefingConfig from decoded JSON."""
 
-    sources = tuple(
-        NewsletterSource(email=str(item["email"]).strip().lower(), name=str(item["name"]))
-        for item in raw.get("sources", [])
-    )
-    if len({source.email for source in sources}) != len(sources):
-        raise ValueError("Briefing config has duplicate source emails")
+    sources = tuple(parse_source(item) for item in raw.get("sources", []))
+    addresses = [address for source in sources for address in (source.email, *source.aliases)]
+    if len(set(addresses)) != len(addresses):
+        raise ValueError("Briefing config has duplicate source emails or aliases")
 
     min_sources = raw.get("min_sources")
     return BriefingConfig(
@@ -50,7 +48,20 @@ def parse_briefing_config(raw: Mapping[str, Any]) -> BriefingConfig:
         title_template=str(raw.get("title_template", "Morning Briefing - {date}")),
         max_stories_per_source=int(raw.get("max_stories_per_source", 3)),
         min_sources=int(min_sources) if min_sources is not None else None,
-        allowed_forwarders=tuple(
-            str(email).strip().lower() for email in raw.get("allowed_forwarders", [])
-        ),
+        allowed_forwarders=lowered(raw.get("allowed_forwarders", [])),
+        flush_at=str(raw["flush_at"]) if raw.get("flush_at") else None,
     )
+
+
+def parse_source(item: Mapping[str, Any]) -> NewsletterSource:
+    return NewsletterSource(
+        email=str(item["email"]).strip().lower(),
+        name=str(item["name"]),
+        aliases=lowered(item.get("aliases", [])),
+        domains=lowered(item.get("domains", [])),
+        sender_names=lowered(item.get("sender_names", [])),
+    )
+
+
+def lowered(values: Any) -> tuple[str, ...]:
+    return tuple(str(value).strip().lower() for value in values)

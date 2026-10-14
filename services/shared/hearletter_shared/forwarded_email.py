@@ -50,13 +50,15 @@ def parse_forwarded_email(raw_message: bytes, *, fallback_received_at: str) -> F
     block = text_block or (find_forwarded_block(html_to_text(html)) if html else None)
 
     if block is not None:
-        source_email = address_of(block.headers.get("from", ""))
+        source_header = block.headers.get("from", "")
+        source_email = address_of(source_header)
         subject = block.headers.get("subject") or strip_forward_prefix(outer_subject)
         forwarder = outer_from
         if text_block is not None:
             text = text_block.body  # drop the forwarder's note and the forward headers
     else:
         # Auto-forwarded mail keeps the newsletter's From header.
+        source_header = str(message.get("From", ""))
         source_email = outer_from
         subject = outer_subject
         forwarder = auto_forwarder(message) or outer_from
@@ -68,6 +70,7 @@ def parse_forwarded_email(raw_message: bytes, *, fallback_received_at: str) -> F
         received_at=message_received_at(message) or fallback_received_at,
         text=text,
         html=html,
+        source_display_name=display_name_of(source_header),
     )
 
 
@@ -118,6 +121,13 @@ def address_of(value: str) -> str | None:
 
     _, address = parseaddr(value)
     return address.strip().lower() or None
+
+
+def display_name_of(value: str) -> str | None:
+    """Return the display name from a header-like value ("Morning Brew <x@y>")."""
+
+    name, _ = parseaddr(value)
+    return name.strip().strip('"').strip() or None
 
 
 def auto_forwarder(message: EmailMessage) -> str | None:

@@ -256,7 +256,7 @@ locals {
           "SOURCE '${aws_cloudwatch_log_group.briefing_builder.name}'",
           "| SOURCE '${aws_cloudwatch_log_group.episode_producer.name}'",
           "| fields @timestamp, @log, message, @message",
-          "| filter message in ['briefing_batch_processed', 'episodes_produced', 'raw_email_failed', 'briefing_failed']",
+          "| filter message in ['briefing_batch_processed', 'briefing_flush_processed', 'script_writer_failed', 'episodes_produced', 'raw_email_failed', 'briefing_failed']",
           "| sort @timestamp desc",
           "| limit 50",
         ])
