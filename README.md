@@ -72,6 +72,17 @@ To save decoded non-text parts such as inline images:
 python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
 ```
 
+## Generating Today's Episode On Demand
+
+Forward the newsletters, then run:
+
+```bash
+make episode
+```
+
+It builds today's episode from whatever has arrived and the MP3 email follows. Running it again
+does nothing unless the newsletters changed.
+
 ## Managing Newsletter Sources
 
 Edit [config/briefing.json](config/briefing.json), then package and apply. The SQS batch size is

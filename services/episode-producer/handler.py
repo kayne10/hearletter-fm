@@ -3,8 +3,9 @@
 Trigger: S3 ObjectCreated on the processed bucket (scripts/**/script.json), invoked
 asynchronously. Lambda retries failures twice, then sends the event to the episode DLQ.
 
-Idempotent: the MP3 key is derived from the deterministic episode id, and a notified.json
-marker prevents a second email when S3 or Lambda delivers the event again.
+Idempotent: every file is keyed by the episode id, which is derived from the script's content
+fingerprint. A per-episode notified marker prevents a second email when S3 or Lambda delivers
+the event again, while a new version of the day's episode still gets its own MP3 and email.
 """
 
 from __future__ import annotations
@@ -83,18 +84,20 @@ def produce_episode(
     script = BriefingScript.from_dict(get_json(processed, script_key))
     prefix = episode_prefix(script)
     audio_key = f"{prefix}{script.episode_id}.mp3"
-    marker_key = f"{prefix}notified.json"
+    marker_key = f"{prefix}{script.episode_id}.notified.json"
 
     if not audio.exists(audio_key):
         synthesized = synthesize_long_text(tts_factory(), script.text)
         audio.put_bytes(audio_key, synthesized.content, content_type=AUDIO_CONTENT_TYPE)
         put_json(
             audio,
-            f"{prefix}episode.json",
+            f"{prefix}{script.episode_id}.json",
             {
                 "episode_id": script.episode_id,
                 "title": script.title,
                 "episode_date": script.episode_date,
+                "version": script.version,
+                "fingerprint": script.fingerprint,
                 "sources": list(script.sources),
                 "audio_key": audio_key,
                 "byte_length": len(synthesized.content),

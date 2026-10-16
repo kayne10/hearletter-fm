@@ -11,6 +11,7 @@ from hearletter_domain.briefing import (
     BriefingScript,
     StagedNewsletter,
     Story,
+    briefing_fingerprint,
     episode_id_for,
 )
 
@@ -63,6 +64,7 @@ def build_briefing_script(
     forwarder: str,
     episode_date: str,
     created_at: str,
+    version: int = 1,
 ) -> BriefingScript:
     """Order newsletters by config and render a single plain-text script.
 
@@ -71,6 +73,7 @@ def build_briefing_script(
 
     ordered = order_newsletters(newsletters, config)
     names = [item.source_name for item in ordered]
+    fingerprint = briefing_fingerprint(ordered)
 
     paragraphs = [
         f"Good morning. This is your Hearletter briefing for {spoken_date(episode_date)}.",
@@ -86,14 +89,20 @@ def build_briefing_script(
     paragraphs.append("That's your briefing. Have a great day.")
 
     return BriefingScript(
-        episode_id=episode_id_for(forwarder, episode_date),
-        title=config.title_for(episode_date),
+        episode_id=episode_id_for(forwarder, episode_date, fingerprint),
+        title=title_for_version(config.title_for(episode_date), version),
         episode_date=episode_date,
         forwarder=forwarder,
         sources=tuple(item.source_email for item in ordered),
         text="\n\n".join(paragraph for paragraph in paragraphs if paragraph.strip()),
         created_at=created_at,
+        fingerprint=fingerprint,
+        version=version,
     )
+
+
+def title_for_version(title: str, version: int) -> str:
+    return title if version <= 1 else f"{title} (update {version - 1})"
 
 
 def order_newsletters(

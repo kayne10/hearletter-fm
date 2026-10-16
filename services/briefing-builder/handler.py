@@ -5,8 +5,10 @@ Trigger: SQS queue fed by S3 ObjectCreated notifications on the raw-email bucket
 SQS batching (batch size = number of sources, 60s window) is best-effort: newsletters can
 arrive in different batches or different Lambda invocations. So each configured newsletter is
 staged in the processed bucket under its forwarder and local date, and the script is written
-once every required source for that day is present. A conditional write makes the script
-creation exactly-once even when two invocations race.
+once every required source for that day is present. Scripts are keyed by a fingerprint of the
+newsletter content, so re-sending the same emails at any time is a no-op, while a late or changed
+newsletter produces a new version of the day's episode. A conditional write keeps each version
+exactly-once even when two invocations race.
 
 A scheduled "flush" invocation at the config's flush_at local time is the deadline: it builds
 today's briefing from whatever has been staged, so a missing or unrecognised newsletter can't
@@ -29,7 +31,13 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote_plus
 from zoneinfo import ZoneInfo
 
-from hearletter_domain.briefing import BriefingConfig, BriefingScript, StagedNewsletter, slugify
+from hearletter_domain.briefing import (
+    BriefingConfig,
+    BriefingScript,
+    StagedNewsletter,
+    briefing_fingerprint,
+    slugify,
+)
 from hearletter_shared.briefing_script import build_briefing_script, story_from_candidate
 from hearletter_shared.cleaning import clean_newsletter_content, extract_story_candidates
 from hearletter_shared.config import load_briefing_config
@@ -242,14 +250,15 @@ def finalize_briefing(
     script_writer: ScriptWriter | None = None,
     required_sources: int | None = None,
 ) -> dict[str, Any]:
-    """Write the day's script once enough configured sources are staged.
+    """Write a script for the day's staged newsletters, at most once per distinct content.
 
-    required_sources overrides the config's threshold (the deadline flush passes 1).
+    Scripts are keyed by a fingerprint of the newsletter content, so this is idempotent:
+    - same content as an existing script (redelivery, re-forward): nothing happens;
+    - the day's first script: waits for the required sources (the deadline flush passes
+      required_sources=1);
+    - the day already has a script and the content changed (a late or corrected newsletter):
+      a new version is written, and the producer emails it.
     """
-
-    key = script_key(forwarder, episode_date)
-    if processed.exists(key):
-        return {"status": "already_built", "script_key": key}
 
     staged = [
         StagedNewsletter.from_dict(get_json(processed, staged_object))
@@ -258,9 +267,19 @@ def finalize_briefing(
     ]
     staged = [item for item in staged if config.source_for(item.source_email) is not None]
     present = {item.source_email for item in staged}
-    if len(present) < (required_sources or config.required_source_count):
+    existing = [
+        key
+        for key in processed.list_keys(day_scripts_prefix(forwarder, episode_date))
+        if key.endswith(f"/{SCRIPT_FILE_NAME}")
+    ]
+    needed = required_sources or config.required_source_count
+    if not staged or (not existing and len(present) < needed):
         missing = [source.email for source in config.sources if source.email not in present]
         return {"status": "waiting", "present": sorted(present), "missing": missing}
+
+    key = script_key(forwarder, episode_date, briefing_fingerprint(staged))
+    if key in existing:
+        return {"status": "unchanged", "script_key": key}
 
     script = build_briefing_script(
         newsletters=staged,
@@ -268,13 +287,15 @@ def finalize_briefing(
         forwarder=forwarder,
         episode_date=episode_date,
         created_at=created_at,
+        version=len(existing) + 1,
     )
     if script_writer is not None:
         script = rewrite_script(script, staged, config=config, script_writer=script_writer)
     written = put_json(processed, key, script.to_dict(), if_absent=True)
     return {
-        "status": "built" if written else "already_built",
+        "status": "built" if written else "unchanged",
         "script_key": key,
+        "version": script.version,
         "writer": script.writer,
     }
 
@@ -347,8 +368,12 @@ def staged_key(staged: StagedNewsletter) -> str:
     return f"{prefix}{slugify(staged.source_email)}.json"
 
 
-def script_key(forwarder: str, episode_date: str) -> str:
-    return f"scripts/{slugify(forwarder)}/{episode_date}/{SCRIPT_FILE_NAME}"
+def day_scripts_prefix(forwarder: str, episode_date: str) -> str:
+    return f"scripts/{slugify(forwarder)}/{episode_date}/"
+
+
+def script_key(forwarder: str, episode_date: str, fingerprint: str) -> str:
+    return f"{day_scripts_prefix(forwarder, episode_date)}{fingerprint}/{SCRIPT_FILE_NAME}"
 
 
 def local_date(received_at: str, timezone: str) -> str:

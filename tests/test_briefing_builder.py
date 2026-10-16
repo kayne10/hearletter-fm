@@ -24,7 +24,23 @@ from hearletter_shared.config import REPO_CONFIG_PATH, load_briefing_config
 from hearletter_shared.object_store import LocalObjectStore
 
 NOW = datetime(2026, 10, 12, 14, 0, tzinfo=UTC)
-SCRIPT_KEY = "scripts/reader_example.com/2026-10-12/script.json"
+SCRIPTS_PREFIX = "scripts/reader_example.com/2026-10-12/"
+
+
+def script_keys(store: LocalObjectStore) -> list[str]:
+    return [k for k in store.list_keys(SCRIPTS_PREFIX) if k.endswith("/script.json")]
+
+
+def scripts(store: LocalObjectStore) -> list[dict[str, Any]]:
+    """All of the day's scripts, oldest version first."""
+
+    loaded = [json.loads(store.get_bytes(key)) for key in script_keys(store)]
+    return sorted(loaded, key=lambda script: script.get("version", 0))
+
+
+def only_script(store: LocalObjectStore) -> dict[str, Any]:
+    (script,) = scripts(store)
+    return script
 
 
 def load_builder() -> ModuleType:
@@ -84,7 +100,7 @@ def test_one_batch_with_all_sources_builds_one_script(
     assert outcome.failed_message_ids == []
     assert len(outcome.staged) == 3
     assert [item["status"] for item in outcome.briefings] == ["built"]
-    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    script = only_script(store)
     assert script["forwarder"] == FORWARDER
     assert script["title"] == "Morning Briefing - 2026-10-12"
     assert script["sources"] == [source.email for source in config.sources]
@@ -99,13 +115,14 @@ def test_sources_split_across_batches_wait_then_build_once(
     first = run({"a": TLDR, "b": MORNING_BREW}, store=store, config=config)
     assert first.briefings[0]["status"] == "waiting"
     assert first.briefings[0]["missing"] == ["news@daily.therundown.ai"]
-    assert not store.exists(SCRIPT_KEY)
+    assert script_keys(store) == []
 
     second = run({"c": RUNDOWN}, store=store, config=config)
     assert second.briefings[0]["status"] == "built"
 
     redelivered = run({"c": RUNDOWN}, store=store, config=config)
-    assert redelivered.briefings[0]["status"] == "already_built"
+    assert redelivered.briefings[0]["status"] == "unchanged"
+    assert len(script_keys(store)) == 1
 
 
 def test_min_sources_allows_partial_briefing(
@@ -156,21 +173,21 @@ def test_unreadable_email_fails_only_its_message(
     assert len(outcome.staged) == 1
 
 
-def test_lost_conditional_write_reports_already_built(
+def test_lost_conditional_write_reports_unchanged(
     store: LocalObjectStore, config: BriefingConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     original_put = store.put_bytes
 
     def racing_put(key: str, body: bytes, **kwargs: Any) -> bool:
-        if key == SCRIPT_KEY:  # another invocation wrote the script first
+        if key.endswith("/script.json"):  # another invocation wrote the script first
             original_put(key, b'{"other": true}', content_type="application/json")
         return original_put(key, body, **kwargs)
 
     monkeypatch.setattr(store, "put_bytes", racing_put)
     outcome = run({"a": TLDR, "b": MORNING_BREW, "c": RUNDOWN}, store=store, config=config)
 
-    assert outcome.briefings[0]["status"] == "already_built"
-    assert json.loads(store.get_bytes(SCRIPT_KEY)) == {"other": True}
+    assert outcome.briefings[0]["status"] == "unchanged"
+    assert only_script(store) == {"other": True}
 
 
 def test_handler_returns_partial_batch_failures(
@@ -221,7 +238,7 @@ def test_ai_writer_text_is_used_and_template_kept(
     writer = StubWriter("Good morning. Today's big AI story is Anthropic.")
     outcome = run_with_writer(store, config, writer)
 
-    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    script = only_script(store)
     assert outcome.briefings[0]["writer"] == "claude-opus-5-5"
     assert script["text"].startswith("Good morning. Today's big AI story")
     assert script["writer"] == "claude-opus-5-5"
@@ -233,7 +250,7 @@ def test_ai_writer_failure_falls_back_to_template(
 ) -> None:
     outcome = run_with_writer(store, config, StubWriter(RuntimeError("API down")))
 
-    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    script = only_script(store)
     assert outcome.failed_message_ids == []
     assert script["writer"] == "template" and script["template_text"] is None
     assert "Let's start with TLDR." in script["text"]
@@ -294,20 +311,14 @@ def test_flush_builds_today_from_partial_sources(
     deadline = datetime(2026, 10, 12, 14, 0, tzinfo=UTC)  # 08:00 in America/Denver
     results = builder.flush_due_briefings(processed=store, config=config, now=deadline)
 
-    assert results == [
-        {
-            "forwarder": FORWARDER,
-            "episode_date": "2026-10-12",
-            "status": "built",
-            "script_key": SCRIPT_KEY,
-            "writer": "template",
-        }
-    ]
-    script = json.loads(store.get_bytes(SCRIPT_KEY))
+    assert len(results) == 1
+    assert results[0]["status"] == "built" and results[0]["version"] == 1
+    assert results[0]["script_key"] == script_keys(store)[0]
+    script = only_script(store)
     assert script["sources"] == ["dan@tldrnewsletter.com", "news@daily.therundown.ai"]
 
     again = builder.flush_due_briefings(processed=store, config=config, now=deadline)
-    assert again[0]["status"] == "already_built"
+    assert again[0]["status"] == "unchanged"
 
 
 def test_flush_ignores_other_days_and_empty_days(
@@ -317,7 +328,7 @@ def test_flush_ignores_other_days_and_empty_days(
     next_day = datetime(2026, 10, 13, 14, 0, tzinfo=UTC)
 
     assert builder.flush_due_briefings(processed=store, config=config, now=next_day) == []
-    assert not store.exists(SCRIPT_KEY)
+    assert script_keys(store) == []
 
 
 def test_handler_routes_flush_action(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -331,3 +342,54 @@ def test_handler_routes_flush_action(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert builder.handler({"action": "flush"}, None) == {"briefings": ["ok"]}
     assert len(calls) == 1
+
+
+def test_resending_the_same_emails_later_is_a_no_op(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    first = run({"a": TLDR, "b": MORNING_BREW, "c": RUNDOWN}, store=store, config=config)
+    assert first.briefings[0]["status"] == "built"
+
+    # Re-forwarded hours later: new raw email keys, identical newsletter content.
+    resent = run({"x": TLDR, "y": MORNING_BREW, "z": RUNDOWN}, store=store, config=config)
+
+    assert resent.briefings[0]["status"] == "unchanged"
+    assert len(script_keys(store)) == 1
+
+
+def test_late_newsletter_after_deadline_builds_version_two(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"a": TLDR, "c": RUNDOWN}, store=store, config=config)
+    deadline = datetime(2026, 10, 12, 14, 0, tzinfo=UTC)
+    builder.flush_due_briefings(processed=store, config=config, now=deadline)
+
+    late = run({"b": MORNING_BREW}, store=store, config=config)
+
+    assert late.briefings[0]["status"] == "built" and late.briefings[0]["version"] == 2
+    first, second = scripts(store)
+    assert first["title"] == "Morning Briefing - 2026-10-12"
+    assert second["title"] == "Morning Briefing - 2026-10-12 (update 1)"
+    assert len(second["sources"]) == 3
+    assert first["episode_id"] != second["episode_id"]
+
+    again = run({"b2": MORNING_BREW}, store=store, config=config)
+    assert again.briefings[0]["status"] == "unchanged"
+    assert len(script_keys(store)) == 2
+
+
+def test_changed_newsletter_content_builds_a_new_version(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"a": TLDR, "b": MORNING_BREW, "c": RUNDOWN}, store=store, config=config)
+    corrected = forwarded_email(
+        source_email="dan@tldrnewsletter.com",
+        source_name="TLDR",
+        subject="TLDR 2026-10-12 (correction)",
+        topics=["Nvidia", "Stripe"],
+    )
+
+    outcome = run({"d": corrected}, store=store, config=config)
+
+    assert outcome.briefings[0]["status"] == "built"
+    assert [script["version"] for script in scripts(store)] == [1, 2]

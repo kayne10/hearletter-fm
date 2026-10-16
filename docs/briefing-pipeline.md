@@ -11,7 +11,7 @@ Forward newsletters to listen@beta.hearletter.fm
        parse forward -> filter by source -> clean -> stage
        -> S3 processed bucket       inbox/<forwarder>/<date>/<source>.json
        -> once all sources staged:   template script -> Claude rewrite (template on failure)
-                                     scripts/<forwarder>/<date>/script.json
+                                     scripts/<forwarder>/<date>/<fingerprint>/script.json
   -> S3 ObjectCreated (scripts/**/script.json) -> episode-producer Lambda (async, DLQ: episode-dlq)
        chunked TTS -> S3 audio bucket  episodes/<forwarder>/<date>/<episode_id>.mp3
        -> SES email from no-reply@beta.hearletter.fm with a link to the MP3
@@ -29,7 +29,7 @@ Two Lambdas, one work queue, two dead-letter queues.
 | `sources[].aliases` | Other exact sender addresses, e.g. Morning Brew's `morningbrew@mail.sailthru.com`. |
 | `sources[].domains` | Sender domains, subdomains included. Never list a shared email-provider domain like `sailthru.com`. |
 | `sources[].sender_names` | From display names, case-insensitive. Last resort when the address is new. |
-| `flush_at` | Local `HH:MM` deadline. At that time the episode is built from whatever has arrived. `null` disables it. |
+| `flush_at` | Optional local `HH:MM` for a daily scheduled flush. Off (`null`) by default; see "Short days" below. |
 | `min_sources` | Sources needed before the script is built. `null` means all of them. |
 | `max_stories_per_source` | Stories read from each newsletter. |
 | `timezone` | Decides which calendar day an email belongs to. |
@@ -50,11 +50,45 @@ with whatever has arrived, so three forwards can land in separate invocations. T
 therefore stages each newsletter under the forwarder and local date, and writes the script only
 when the required sources are all present. The batch is just the wake-up call.
 
-The `flush_at` deadline covers the opposite failure: a newsletter that never arrives, or arrives
-from an address the config doesn't recognise. An EventBridge Scheduler rule invokes the builder
-with `{"action": "flush"}` at that local time. It builds today's script from whatever is staged,
-as long as at least one source is present. A newsletter arriving after the deadline is ignored for
-that day, because the script already exists.
+## Short days
+
+If a newsletter doesn't arrive, because it didn't publish, you skipped it, or its sender isn't
+recognised, the day keeps waiting. Build it from whatever has arrived with a manual flush. It uses
+today's date in the config timezone, so run it the same day:
+
+```bash
+make episode
+```
+
+That wraps this call. Override `AWS_REGION` or `BRIEFING_BUILDER` for another stack:
+
+```bash
+aws lambda invoke --function-name hearletter-fm-dev-briefing-builder --region us-east-2 \
+  --cli-binary-format raw-in-base64-out --payload '{"action":"flush"}' /dev/stdout
+```
+
+If the missing newsletter shows up later, it produces an updated episode, described below.
+
+Setting `flush_at` (for example `"08:00"`) adds an EventBridge Scheduler rule that runs the same
+flush daily. It's off because a fixed time suits early-morning forwarding only. Forwards after that
+time get no help, and stragglers after it produce a partial episode and then an update.
+
+## Sending emails at any time
+
+Each script is keyed by a fingerprint of the newsletter content in it: source, subject and
+stories. It ignores which forward delivered a newsletter and when. So you can forward the
+newsletters at any time of day, as often as you like:
+
+- **The same newsletters again**, for example re-forwarded at noon, give the same fingerprint.
+  Nothing is rebuilt and no second email is sent.
+- **Before the day's first episode**, the builder waits until every source is in, or until you
+  run a manual flush.
+- **After the day has an episode**, any changed content is built as the next version and
+  emailed with "(update N)" in the title. Examples are a newsletter arriving after a flush, or a
+  corrected issue.
+
+The episode id comes from the forwarder, date and fingerprint, so each version gets its own MP3
+and email, and retries of a version reuse them.
 
 ## Script writing with Claude
 
@@ -85,14 +119,15 @@ ANTHROPIC_API_KEY=sk-ant-... python3 scripts/run_local_briefing.py tests/fixture
 
 | Situation | Behaviour |
 | --- | --- |
-| SQS redelivers a message | Staging overwrites the same key; script already exists, so nothing new happens. |
-| Two invocations finish the day at once | Script is written with S3 conditional put (`If-None-Match: *`); the loser reports `already_built`. |
+| SQS redelivers a message | Staging overwrites the same key. The fingerprint matches an existing script, so the status is `unchanged`. |
+| Same newsletters forwarded again | Same fingerprint, so the status is `unchanged`: no new script, MP3, or email. |
+| A newsletter changes or arrives late | New fingerprint, so the next version of the day's episode is built and emailed. |
+| Two invocations build the same content at once | Conditional put (`If-None-Match: *`) on the fingerprint key; the loser reports `unchanged`. |
 | One email in a batch fails | Only that message is returned in `batchItemFailures` and retried; after 5 receives it goes to raw-email-dlq. |
 | Building the script fails | Every message that touched that day is retried. |
 | Email from an unknown sender | Logged as ignored and acknowledged. The raw MIME stays in S3. |
-| Same newsletter forwarded twice | Latest copy wins in staging. Once a day's script exists, later forwards are ignored. |
 | episode-producer fails | Lambda retries twice, then the event goes to episode-dlq. |
-| episode-producer runs twice | MP3 key is deterministic and is reused; `notified.json` marker prevents a second email. |
+| episode-producer runs twice | MP3, `<episode_id>.json` and `<episode_id>.notified.json` are keyed by episode id, so there is no second email. |
 
 ## Local development
 
@@ -125,8 +160,8 @@ terraform apply \
 - Presigned links are signed with the Lambda role's temporary credentials. They stop working when
   those credentials expire (hours), even though the email says 7 days. Serving MP3s through
   CloudFront with signed URLs, or attaching small MP3s to the email, fixes this.
-- With `flush_at` set, a missing newsletter delays the episode until the deadline and leaves that
-  newsletter out. Without it, the day waits indefinitely.
+- A day with a missing newsletter waits until you run a manual flush. If short days become
+  common, a quiet period works at any hour: build 30 minutes after the day's last arrival.
 - Claude writes the script, but the voice is still OpenAI TTS by default, because Claude has
   no text-to-speech. `tts_provider = "polly"` removes the OpenAI dependency at some cost to voice
   quality.
