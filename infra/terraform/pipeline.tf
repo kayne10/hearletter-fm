@@ -361,13 +361,14 @@ resource "aws_s3_bucket_notification" "processed" {
   depends_on = [aws_lambda_permission.allow_processed_bucket]
 }
 
-# --- Daily deadline ------------------------------------------------------------------------
-# At flush_at (local time, from config/briefing.json) the builder builds today's briefing from
-# whatever has been staged, so a missing or unrecognised newsletter can't block the episode.
+# --- Optional daily flush ------------------------------------------------------------------
+# Only created when config/briefing.json sets flush_at (local HH:MM). It builds today's briefing
+# from whatever has been staged. Off by default; run the flush manually instead (see docs).
 
 locals {
   briefing_flush_at = try(local.briefing_config.flush_at, null)
-  briefing_flush_hm = local.briefing_flush_at == null ? [] : split(":", local.briefing_flush_at)
+  # Defaulted so indexing is valid even when the schedule is disabled (count = 0).
+  briefing_flush_hm = split(":", coalesce(local.briefing_flush_at, "00:00"))
 }
 
 data "aws_iam_policy_document" "scheduler_assume" {
