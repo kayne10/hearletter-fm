@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import sys
@@ -87,7 +88,8 @@ def test_produces_one_mp3_and_one_email_idempotently(tmp_path: Path) -> None:
     assert sent[0].to_email == "reader@example.com"
     assert sent[0].from_email == "no-reply@beta.hearletter.fm"
     assert sent[0].audio_url == f"https://signed/{mp3_key}"
-    episode = json.loads(audio.get_bytes("episodes/reader_example.com/2026-10-12/episode.json"))
+    episode_key = "episodes/reader_example.com/2026-10-12/ep_20261012_abc.json"
+    episode = json.loads(audio.get_bytes(episode_key))
     assert episode["tts_chunks"] == len(tts.calls)
 
 
@@ -113,3 +115,39 @@ def test_script_refs_decodes_s3_keys() -> None:
         ]
     }
     assert producer.script_refs(event) == [("processed", "scripts/a@b/2026-10-12/script.json")]
+
+
+def test_each_version_of_a_day_gets_its_own_mp3_and_email(tmp_path: Path) -> None:
+    processed = LocalObjectStore(tmp_path / "processed")
+    audio = LocalObjectStore(tmp_path / "audio")
+    version_two = dataclasses.replace(SCRIPT, episode_id="ep_20261012_def", version=2)
+    put_json(processed, "scripts/x/v1/script.json", SCRIPT.to_dict())
+    put_json(processed, "scripts/x/v2/script.json", version_two.to_dict())
+    sent: list[EpisodeEmail] = []
+
+    def produce(key: str) -> dict[str, object]:
+        return producer.produce_episode(
+            processed,
+            key,
+            audio=audio,
+            tts_factory=FakeTTS,
+            link_for=lambda audio_key: audio_key,
+            send_email=lambda email: sent.append(email) or "msg",
+            from_email="no-reply@beta.hearletter.fm",
+            url_ttl_seconds=3600,
+        )
+
+    statuses = [
+        produce(k)["status"]
+        for k in (
+            "scripts/x/v1/script.json",
+            "scripts/x/v2/script.json",
+            "scripts/x/v2/script.json",
+        )
+    ]
+
+    assert statuses == ["sent", "sent", "already_notified"]
+    assert [email.audio_url.rsplit("/", 1)[1] for email in sent] == [
+        "ep_20261012_abc.mp3",
+        "ep_20261012_def.mp3",
+    ]

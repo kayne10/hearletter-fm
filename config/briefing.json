@@ -3,7 +3,7 @@
   "title_template": "Morning Briefing - {date}",
   "max_stories_per_source": 3,
   "min_sources": null,
-  "flush_at": "08:00",
+  "flush_at": null,
   "allowed_forwarders": [],
   "sources": [
     {

@@ -23,3 +23,27 @@ def test_alias_cannot_belong_to_two_sources() -> None:
     }
     with pytest.raises(ValueError, match="duplicate"):
         parse_briefing_config(raw)
+
+
+def test_fingerprint_ignores_order_and_delivery_but_not_content() -> None:
+    from hearletter_domain.briefing import StagedNewsletter, Story, briefing_fingerprint
+
+    def staged(source: str, raw_key: str, subject: str = "Issue") -> StagedNewsletter:
+        return StagedNewsletter(
+            forwarder="r@example.com",
+            episode_date="2026-10-12",
+            source_email=source,
+            source_name=source,
+            subject=subject,
+            received_at=f"2026-10-12T{raw_key}",
+            raw_email_key=raw_key,
+            clean_word_count=1,
+            stories=(Story(title="t", summary="s"),),
+        )
+
+    first = [staged("a@x.com", "k1"), staged("b@y.com", "k2")]
+    resent = [staged("b@y.com", "k9"), staged("a@x.com", "k8")]
+    changed = [staged("a@x.com", "k1", subject="Correction"), staged("b@y.com", "k2")]
+
+    assert briefing_fingerprint(first) == briefing_fingerprint(resent)
+    assert briefing_fingerprint(first) != briefing_fingerprint(changed)

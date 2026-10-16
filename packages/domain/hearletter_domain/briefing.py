@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -140,6 +142,17 @@ class StagedNewsletter:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def content_digest(self) -> str:
+        """Hash of what gets read out. Ignores which forward delivered it and when."""
+
+        content = {
+            "source": self.source_email,
+            "subject": self.subject,
+            "stories": [asdict(story) for story in self.stories],
+        }
+        encoded = json.dumps(content, sort_keys=True, ensure_ascii=False).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> StagedNewsletter:
         stories = tuple(Story(**story) for story in value.get("stories", []))
@@ -157,6 +170,8 @@ class BriefingScript:
     sources: tuple[str, ...]
     text: str
     created_at: str
+    fingerprint: str = ""  # identifies the exact set of newsletter content in this episode
+    version: int = 1  # 1 for the day's first episode, 2+ when later newsletters change it
     writer: str = "template"  # "template" or the Claude model id that wrote the text
     template_text: str | None = None  # template draft kept for comparison when AI-written
 
@@ -168,8 +183,16 @@ class BriefingScript:
         return cls(**{**value, "sources": tuple(value.get("sources", []))})
 
 
-def episode_id_for(forwarder: str, episode_date: str) -> str:
-    """Deterministic episode id so retries never create a second episode."""
+def briefing_fingerprint(newsletters: Iterable[StagedNewsletter]) -> str:
+    """Same newsletters (in any order, from any forward) give the same fingerprint."""
 
-    digest = hashlib.sha256(f"{forwarder.lower()}|{episode_date}".encode()).hexdigest()[:12]
+    digests = sorted(item.content_digest() for item in newsletters)
+    return hashlib.sha256("|".join(digests).encode()).hexdigest()[:16]
+
+
+def episode_id_for(forwarder: str, episode_date: str, fingerprint: str = "") -> str:
+    """Deterministic episode id: retries and re-forwards of the same content reuse it."""
+
+    seed = f"{forwarder.lower()}|{episode_date}|{fingerprint}"
+    digest = hashlib.sha256(seed.encode()).hexdigest()[:12]
     return f"ep_{episode_date.replace('-', '')}_{digest}"

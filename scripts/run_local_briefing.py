@@ -119,7 +119,7 @@ def main() -> None:
     )
     print(json.dumps(dataclasses.asdict(outcome), indent=2))
 
-    built = [item for item in outcome.briefings if item.get("status") in {"built", "already_built"}]
+    built = [item for item in outcome.briefings if item.get("status") in {"built", "unchanged"}]
     if not built:
         print("\nNo script yet: not all required sources are present.")
         return
