@@ -12,6 +12,8 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in minimal local env
 
 from hearletter_utils.text import normalize_whitespace
 
+from hearletter_shared.story_parsers import strip_invisible
+
 JUNK_LINE_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -105,6 +107,9 @@ def clean_newsletter_content(*, html: str | None, text: str | None) -> tuple[str
     Forwarded newsletters often include a high-quality `text/plain` alternative. Prefer it for
     local extraction because HTML table layouts tend to fragment sentences into many tiny nodes.
     """
+
+    text = strip_invisible(text) if text else text
+    html = strip_invisible(html) if html else html
 
     if text:
         cleaned = clean_plain_text(text)

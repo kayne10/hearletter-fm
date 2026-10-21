@@ -9,21 +9,38 @@
     {
       "email": "dan@tldrnewsletter.com",
       "name": "TLDR",
-      "domains": ["tldrnewsletter.com"],
-      "sender_names": ["TLDR"]
+      "domains": [
+        "tldrnewsletter.com"
+      ],
+      "sender_names": [
+        "TLDR"
+      ],
+      "parser": "tldr"
     },
     {
       "email": "crew@morningbrew.com",
       "name": "Morning Brew",
-      "aliases": ["morningbrew@mail.sailthru.com"],
-      "domains": ["morningbrew.com"],
-      "sender_names": ["Morning Brew"]
+      "aliases": [
+        "morningbrew@mail.sailthru.com"
+      ],
+      "domains": [
+        "morningbrew.com"
+      ],
+      "sender_names": [
+        "Morning Brew"
+      ]
     },
     {
       "email": "news@daily.therundown.ai",
       "name": "The Rundown",
-      "domains": ["therundown.ai"],
-      "sender_names": ["The Rundown", "The Rundown AI"]
+      "domains": [
+        "therundown.ai"
+      ],
+      "sender_names": [
+        "The Rundown",
+        "The Rundown AI"
+      ],
+      "parser": "rundown"
     }
   ]
 }

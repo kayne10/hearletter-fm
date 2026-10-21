@@ -393,3 +393,47 @@ def test_changed_newsletter_content_builds_a_new_version(
 
     assert outcome.briefings[0]["status"] == "built"
     assert [script["version"] for script in scripts(store)] == [1, 2]
+
+
+def test_tldr_and_rundown_use_their_template_parsers(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    fixtures = Path(__file__).parent / "fixtures"
+    tldr = forwarded_email(
+        source_email="dan@tldrnewsletter.com",
+        source_name="TLDR",
+        subject="TLDR 2026-10-20",
+        topics=[],
+        body=(fixtures / "tldr_2026-10-20.txt").read_text(),
+    )
+    rundown = forwarded_email(
+        source_email="news@daily.therundown.ai",
+        source_name="The Rundown",
+        subject="The Rundown",
+        topics=[],
+        body=(fixtures / "rundown_2026-10-20.txt").read_text(),
+    )
+    run({"t": tldr, "r": rundown, "b": MORNING_BREW}, store=store, config=config)
+
+    staged = {
+        item["source_name"]: item
+        for item in (json.loads(store.get_bytes(key)) for key in store.list_keys("inbox/"))
+    }
+    assert staged["TLDR"]["extractor"] == "tldr"
+    assert staged["The Rundown"]["extractor"] == "rundown"
+    assert staged["Morning Brew"]["extractor"] == "generic"
+    assert [s["title"] for s in staged["The Rundown"]["stories"]][1] == (
+        "One hacker’s AI agents break into 100+ companies"
+    )
+    assert len(staged["TLDR"]["stories"]) == config.max_stories_per_source
+
+
+def test_parser_that_finds_nothing_falls_back_to_generic(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"a": TLDR}, store=store, config=config)  # synthetic TLDR without TLDR's layout
+
+    (key,) = store.list_keys("inbox/")
+    staged = json.loads(store.get_bytes(key))
+    assert staged["extractor"] == "generic"
+    assert staged["stories"]

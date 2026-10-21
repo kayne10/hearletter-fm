@@ -33,6 +33,16 @@ def story_from_candidate(candidate: dict[str, object]) -> Story:
     return Story(title=title, summary=spoken_summary(excerpt), source_text=spoken_text(excerpt))
 
 
+def story_from_parsed(title: str, text: str) -> Story:
+    """Turn a template-parser story into a speakable story."""
+
+    return Story(
+        title=spoken_text(title).rstrip(".:"),
+        summary=spoken_summary(text),
+        source_text=spoken_text(text),
+    )
+
+
 def spoken_summary(excerpt: str, *, max_sentences: int = 2) -> str:
     """First couple of sentences of an excerpt, capped for listening."""
 

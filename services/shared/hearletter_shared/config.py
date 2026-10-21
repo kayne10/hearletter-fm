@@ -10,6 +10,8 @@ from typing import Any
 
 from hearletter_domain.briefing import BriefingConfig, NewsletterSource
 
+from hearletter_shared.story_parsers import STORY_PARSERS
+
 CONFIG_FILE_NAME = "briefing.json"
 CONFIG_PATH_ENV = "BRIEFING_CONFIG_PATH"
 REPO_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / CONFIG_FILE_NAME
@@ -60,7 +62,17 @@ def parse_source(item: Mapping[str, Any]) -> NewsletterSource:
         aliases=lowered(item.get("aliases", [])),
         domains=lowered(item.get("domains", [])),
         sender_names=lowered(item.get("sender_names", [])),
+        parser=parse_parser_name(item.get("parser")),
     )
+
+
+def parse_parser_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    name = str(value).strip().lower()
+    if name not in STORY_PARSERS:
+        raise ValueError(f"Unknown story parser {name!r}; choose from {sorted(STORY_PARSERS)}")
+    return name
 
 
 def lowered(values: Any) -> tuple[str, ...]:

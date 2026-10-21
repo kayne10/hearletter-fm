@@ -31,6 +31,7 @@ def forwarded_email(
     topics: list[str],
     forwarder: str = FORWARDER,
     date: str = "Mon, 12 Oct 2026 07:15:00 -0600",
+    body: str | None = None,
 ) -> bytes:
     """A Gmail-style manual forward."""
 
@@ -45,7 +46,7 @@ def forwarded_email(
         f"From: {source_name} <{source_email}>\n"
         "Date: Mon, Oct 12, 2026 at 5:00 AM\n"
         f"Subject: {subject}\n"
-        f"To: <{forwarder}>\n\n\n" + newsletter_body(source_name, topics)
+        f"To: <{forwarder}>\n\n\n" + (body or newsletter_body(source_name, topics))
     )
     return message.as_bytes()
 

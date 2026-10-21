@@ -35,15 +35,21 @@ from hearletter_domain.briefing import (
     BriefingConfig,
     BriefingScript,
     StagedNewsletter,
+    Story,
     briefing_fingerprint,
     slugify,
 )
-from hearletter_shared.briefing_script import build_briefing_script, story_from_candidate
+from hearletter_shared.briefing_script import (
+    build_briefing_script,
+    story_from_candidate,
+    story_from_parsed,
+)
 from hearletter_shared.cleaning import clean_newsletter_content, extract_story_candidates
 from hearletter_shared.config import load_briefing_config
 from hearletter_shared.forwarded_email import parse_forwarded_email
 from hearletter_shared.lambda_events import log_json, log_lambda_event
 from hearletter_shared.object_store import ObjectStore, S3ObjectStore, get_json, put_json
+from hearletter_shared.story_parsers import STORY_PARSERS
 
 if TYPE_CHECKING:  # the writer pulls in anthropic/pydantic; template mode doesn't need them
     from hearletter_shared.script_writer import ScriptWriter
@@ -224,7 +230,9 @@ def stage_raw_email(
         return None, f"unconfigured_source:{sender}"
 
     clean_text, _ = clean_newsletter_content(html=newsletter.html, text=newsletter.text)
-    candidates = extract_story_candidates(clean_text, max_stories=config.max_stories_per_source)
+    stories, extractor = extract_stories(
+        source.parser, newsletter.text, clean_text, max_stories=config.max_stories_per_source
+    )
     staged = StagedNewsletter(
         forwarder=newsletter.forwarder,
         episode_date=local_date(newsletter.received_at, config.timezone),
@@ -234,10 +242,35 @@ def stage_raw_email(
         received_at=newsletter.received_at,
         raw_email_key=ref.key,
         clean_word_count=len(clean_text.split()),
-        stories=tuple(story_from_candidate(candidate) for candidate in candidates),
+        stories=stories,
+        extractor=extractor,
     )
     put_json(processed, staged_key(staged), staged.to_dict())
     return staged, "staged"
+
+
+def extract_stories(
+    parser_name: str | None,
+    text: str | None,
+    clean_text: str,
+    *,
+    max_stories: int,
+) -> tuple[tuple[Story, ...], str]:
+    """Use the source's template parser; fall back to the generic extractor if it finds nothing.
+
+    Template parsers return stories in newsletter order, which is the newsletter's own ranking,
+    so the first max_stories are kept.
+    """
+
+    parser = STORY_PARSERS.get(parser_name or "")
+    if parser is not None and text:
+        parsed = parser(text)
+        if parsed:
+            stories = tuple(story_from_parsed(item.title, item.text) for item in parsed)
+            return stories[:max_stories], str(parser_name)
+        log_json("story_parser_found_nothing", parser=parser_name)
+    candidates = extract_story_candidates(clean_text, max_stories=max_stories)
+    return tuple(story_from_candidate(candidate) for candidate in candidates), "generic"
 
 
 def finalize_briefing(

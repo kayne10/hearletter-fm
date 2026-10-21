@@ -33,6 +33,7 @@ class NewsletterSource:
     aliases: tuple[str, ...] = ()
     domains: tuple[str, ...] = ()
     sender_names: tuple[str, ...] = ()
+    parser: str | None = None  # template-aware story parser name; None uses the generic one
 
     @property
     def slug(self) -> str:
@@ -138,6 +139,7 @@ class StagedNewsletter:
     raw_email_key: str
     clean_word_count: int
     stories: tuple[Story, ...] = field(default_factory=tuple)
+    extractor: str = "generic"  # which story parser produced `stories`
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
