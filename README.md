@@ -100,8 +100,10 @@ when `anthropic_api_key_secret_arn` is set. Any failure falls back to the templa
 `episode-producer` picks a provider with `TTS_PROVIDER` (Terraform variable `tts_provider`):
 
 - `openai` (deployed default): `gpt-4o-mini-tts`, voice `marin` unless `openai_tts_voice` is set.
-- `polly`: Amazon Polly generative engine, voice Joanna. Polly is called in `polly_region`
-  (default us-east-1), because us-east-2 doesn't offer the generative engine.
+- `polly`: Amazon Polly long-form engine, built for long narration, with voice Danielle. The
+  other long-form voices are Ruth, Gregory and Patrick. Set `polly_engine=generative` with
+  `polly_voice_id=Joanna` for the cheaper previous voice. Polly is called in `polly_region`
+  (default us-east-1), because us-east-2 offers neither long-form nor generative.
 
 Long scripts are split at paragraph and sentence boundaries to fit each provider's request limit,
 and the MP3 chunks are joined into one file.

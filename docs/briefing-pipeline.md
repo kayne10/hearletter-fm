@@ -28,6 +28,7 @@ Two Lambdas, one work queue, two dead-letter queues.
 | `sources[]` | `email` (canonical sender) and `name` (spoken in the episode). Order = episode order. |
 | `sources[].aliases` | Other exact sender addresses, e.g. Morning Brew's `morningbrew@mail.sailthru.com`. |
 | `sources[].domains` | Sender domains, subdomains included. Never list a shared email-provider domain like `sailthru.com`. |
+| `sources[].parser` | Template-aware story parser: `tldr` or `rundown`. Omit to use the generic extractor. |
 | `sources[].sender_names` | From display names, case-insensitive. Last resort when the address is new. |
 | `flush_at` | Optional local `HH:MM` for a daily scheduled flush. Off (`null`) by default; see "Short days" below. |
 | `min_sources` | Sources needed before the script is built. `null` means all of them. |
@@ -42,6 +43,23 @@ Changing it means `make package-lambdas` then `terraform apply`.
 Matching tries exact addresses and aliases first, then domains, then display names. Anything
 that still doesn't match shows up as `unconfigured_source:<name> <address>` in the builder's
 `ignored` log, which is the dashboard's pipeline-events table. Add that address as an alias.
+
+## Story extraction
+
+Newsletters with a stable layout get their own parser in `hearletter_shared/story_parsers.py`.
+They read the newsletter's own markers instead of guessing from paragraph shape:
+
+- **TLDR**: bold titles ending in "(N minute read)", followed by their paragraph. Entries marked
+  "(Sponsor)" are skipped.
+- **The Rundown**: the stories under "LATEST DEVELOPMENTS", each made of "The Rundown:",
+  "Why it matters:" and "The details:". Sponsor blocks ("TOGETHER WITH", "PRESENTED BY"), the
+  "AI TRAINING" how-to and "QUICK HITS" are skipped.
+
+Stories keep the newsletter's order, and the first `max_stories_per_source` are used. Invisible
+preheader characters are stripped for every newsletter. If a parser finds nothing, for example
+after a layout change, the generic extractor takes over. A `story_parser_found_nothing` log line
+records it, and the staged file's `extractor` field shows which one ran. The tests use
+`tests/fixtures/*_2026-10-20.txt`. Add a new fixture when a layout changes.
 
 ## Why staging, not just batching
 
@@ -103,9 +121,24 @@ several newsletters cover, and it is told to use only facts from the newsletters
 | `script_model` | `claude-opus-5-5` | `claude-sonnet-5-5` roughly halves the cost. |
 | `script_effort` | `medium` | Higher effort means more thinking and higher cost. |
 
+### Priorities and house rules
+
+The `editorial` block in `config/briefing.json` steers what Claude focuses on:
+
+| Field | Meaning |
+| --- | --- |
+| `topics[]` | `name`, `weight` and optional `examples`. Weights are relative: 4/3/2/1 gives 40/30/20/10% of airtime. Higher weights also come earlier. |
+| `rules[]` | Plain-language house rules, passed to Claude as written. |
+| `target_minutes` | Episode length; at 150 words per minute, 7 minutes is about 1,050 words. A script under half of that falls back to the template. |
+| `candidates_per_source` | Stories staged per newsletter for Claude to choose from (default 6). The template fallback still reads `max_stories_per_source`. |
+
+The current priorities are tech and programming (4), AI agent development (3), news and politics
+(2), then humor and light stories (1). Light stories are saved for the end. Edit the block, then
+run `make package-lambdas` and apply. The next new episode uses it.
+
 The call uses structured output, so it returns validated segments. It also enables the API's
-refusal fallback. A refusal, truncation, error, or a script under 150 words keeps the template
-text, and the episode still ships. `script.json` records `writer` and, when Claude wrote the text,
+refusal fallback. A refusal, truncation, error, or a script under half the target length keeps the
+template text, and the episode still ships. `script.json` records `writer` and, when Claude wrote the text,
 the `template_text` it replaced. The `script_writer_succeeded` and `script_writer_failed` log lines
 show up in the dashboard's pipeline-events table.
 

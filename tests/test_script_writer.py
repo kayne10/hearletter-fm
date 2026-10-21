@@ -17,7 +17,7 @@ from hearletter_shared.script_writer import (
 )
 
 CONFIG = load_briefing_config(REPO_CONFIG_PATH)
-LONG_TEXT = " ".join(["Nvidia shipped a new chip and analysts say it matters."] * 20)
+LONG_TEXT = " ".join(["Nvidia shipped a new chip and analysts say it matters."] * 60)
 
 
 def staged(source_email: str, name: str, title: str) -> StagedNewsletter:
@@ -128,3 +128,54 @@ def test_resolves_key_from_json_secret() -> None:
         env={"ANTHROPIC_API_KEY_SECRET_ARN": "arn"}, boto3_session_factory=lambda: session
     )
     assert key == "sk-1"
+
+
+def test_system_prompt_ranks_topics_by_weight_with_airtime_shares() -> None:
+    from hearletter_domain.briefing import EditorialConfig, TopicWeight
+    from hearletter_shared.script_writer import build_system_prompt
+
+    editorial = EditorialConfig(
+        target_minutes=5,
+        topics=(
+            TopicWeight("Humor", 1),
+            TopicWeight("Tech and programming", 4, "developer tools"),
+            TopicWeight("AI agent development", 3),
+            TopicWeight("News and politics", 2),
+        ),
+        rules=("Save light stories for last.",),
+    )
+
+    prompt = build_system_prompt(editorial)
+
+    order = [prompt.index(name) for name in ("Tech and", "AI agent", "News and", "Humor")]
+    assert order == sorted(order)
+    assert "Tech and programming (weight 4, about 40% of airtime): developer tools" in prompt
+    assert "- Save light stories for last." in prompt
+    assert "about 750 words" in prompt
+
+
+def test_repo_config_carries_the_listener_priorities() -> None:
+    names = [topic.name for topic in CONFIG.editorial.topics]
+    weights = [topic.weight for topic in CONFIG.editorial.topics]
+
+    assert names[0] == "Tech and programming" and names[1] == "AI agent development"
+    assert weights == sorted(weights, reverse=True)
+    assert CONFIG.stories_to_stage == CONFIG.editorial.candidates_per_source
+
+
+def test_script_shorter_than_half_the_target_falls_back() -> None:
+    short = " ".join(["Short but real sentence here."] * 60)  # 300 words < 525
+
+    with pytest.raises(ScriptWriterError, match="< 525"):
+        write(fake_client(draft(short)))
+
+
+def test_user_prompt_includes_newsletter_sections() -> None:
+    from dataclasses import replace
+
+    from hearletter_shared.script_writer import build_user_prompt
+
+    story = Story(title="Releasing Python 3.15", summary="s", section="Programming")
+    newsletter = replace(NEWSLETTERS[1], stories=(story,))
+
+    assert '"section": "Programming"' in build_user_prompt([newsletter], CONFIG, "2026-10-12")

@@ -8,7 +8,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from hearletter_domain.briefing import BriefingConfig, NewsletterSource
+from hearletter_domain.briefing import (
+    BriefingConfig,
+    EditorialConfig,
+    NewsletterSource,
+    TopicWeight,
+)
+
+from hearletter_shared.story_parsers import STORY_PARSERS
 
 CONFIG_FILE_NAME = "briefing.json"
 CONFIG_PATH_ENV = "BRIEFING_CONFIG_PATH"
@@ -50,6 +57,27 @@ def parse_briefing_config(raw: Mapping[str, Any]) -> BriefingConfig:
         min_sources=int(min_sources) if min_sources is not None else None,
         allowed_forwarders=lowered(raw.get("allowed_forwarders", [])),
         flush_at=str(raw["flush_at"]) if raw.get("flush_at") else None,
+        editorial=parse_editorial(raw.get("editorial") or {}),
+    )
+
+
+def parse_editorial(raw: Mapping[str, Any]) -> EditorialConfig:
+    defaults = EditorialConfig()
+    return EditorialConfig(
+        target_minutes=float(raw.get("target_minutes", defaults.target_minutes)),
+        words_per_minute=int(raw.get("words_per_minute", defaults.words_per_minute)),
+        candidates_per_source=int(
+            raw.get("candidates_per_source", defaults.candidates_per_source)
+        ),
+        topics=tuple(
+            TopicWeight(
+                name=str(topic["name"]).strip(),
+                weight=float(topic["weight"]),
+                examples=str(topic.get("examples", "")).strip(),
+            )
+            for topic in raw.get("topics", [])
+        ),
+        rules=tuple(str(rule).strip() for rule in raw.get("rules", []) if str(rule).strip()),
     )
 
 
@@ -60,7 +88,17 @@ def parse_source(item: Mapping[str, Any]) -> NewsletterSource:
         aliases=lowered(item.get("aliases", [])),
         domains=lowered(item.get("domains", [])),
         sender_names=lowered(item.get("sender_names", [])),
+        parser=parse_parser_name(item.get("parser")),
     )
+
+
+def parse_parser_name(value: Any) -> str | None:
+    if value is None:
+        return None
+    name = str(value).strip().lower()
+    if name not in STORY_PARSERS:
+        raise ValueError(f"Unknown story parser {name!r}; choose from {sorted(STORY_PARSERS)}")
+    return name
 
 
 def lowered(values: Any) -> tuple[str, ...]:

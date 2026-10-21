@@ -47,3 +47,13 @@ def test_fingerprint_ignores_order_and_delivery_but_not_content() -> None:
 
     assert briefing_fingerprint(first) == briefing_fingerprint(resent)
     assert briefing_fingerprint(first) != briefing_fingerprint(changed)
+
+
+def test_editorial_validation() -> None:
+    topic = {"name": "Tech", "weight": 0}
+    with pytest.raises(ValueError, match="weight above 0"):
+        parse_briefing_config({"sources": [SOURCE], "editorial": {"topics": [topic]}})
+    with pytest.raises(ValueError, match="target_minutes"):
+        parse_briefing_config({"sources": [SOURCE], "editorial": {"target_minutes": 90}})
+    defaults = parse_briefing_config({"sources": [SOURCE]}).editorial
+    assert defaults.target_words == 1050 and defaults.topics == ()

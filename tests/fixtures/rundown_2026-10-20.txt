@@ -1,0 +1,452 @@
+PLUS: Try ChatGPT’s new voices with GPT-Live-1.1
+ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌ ‌
+
+
+  Read online
+
+
+*Read Online
+*
+| *Sign Up
+*
+| *Advertise
+*
+
+
+*Good morning, AI enthusiasts, and welcome to our 5,481 new readers. *Anthropic
+has spent 2026 warning that AI is moving faster than anyone is ready for.
+Now one of its co-founders says the moment has a name.
+
+Jack Clark just said that the singularity, when AI-driven progress starts
+outrunning humanity’s ability to keep up, is officially underway. What
+comes with it? A possible $44T U.S. economy, serious job disruption, and a
+short window to decide if AI needs an intelligence cap.
+
+
+*In today’s AI rundown:*
+
+   -
+
+   Anthropic co-founder says the singularity is underway
+   -
+
+   One hacker’s AI agents break into 100+ companies
+   -
+
+   Try ChatGPT’s new voices with GPT-Live-1.1
+   -
+
+   Inception’s Mercury 3 speeds past rivals
+
+*LATEST DEVELOPMENTS*
+
+ANTHROPIC
+🌌 *Anthropic co-founder says the singularity is underway
+*
+
+Image source: IMF
+
+*The Rundown: *Anthropic co-founder Jack Clark just told
+
+economists and policymakers at the IMF and World Bank’s annual meetings
+that the singularity, the point where AI speeds up discovery faster than
+humans can follow, has “now begun.”
+
+*The details: *
+
+   -
+
+   Clark pointed to AI’s scores on Humanity’s Last Exam (expert-level
+   questions) going from 8% to 67.7% since 2025, and FrontierMath improving
+   from 2% to 94%.
+   -
+
+   One Anthropic model has U.S. GDP at $44T by 2030 if AI spreads fast,
+   which Clark admitted sounds outlandish but also predicts “very disruptive”
+   job impacts.
+   -
+
+   The world’s 10M scientists may soon direct “a billion virtual
+   scientists,” Clark said while urging nations to build labs and robots
+   before they run short.
+   -
+
+   He also said CEO Dario Amodei has floated limits on AI’s “ceiling of
+   intelligence,” adding that he believes there is only “a small number of
+   years” to act.
+
+*Why it matters: *With the number of AI math and science breakthroughs in
+the last few months alone, 2026 has handed Clark plenty of evidence.
+Singularity talk used to live strictly in science fiction, and now one of
+the people building it is saying it out loud to the folks who run the
+global economy.
+
+TOGETHER WITH ATLASSIAN
+📈 *AI adoption has outpaced strategy
+*
+
+
+*The Rundown:* Atlassian’s 2026 State of the Developer Experience report,
+based on global research with 1,560 respondents including devs and
+engineering leaders, maps out clear paths for leaders to help their teams
+manage the speed vs. friction tension happening right now.
+
+*In the report, you’ll explore how:*
+
+   -
+
+   Devs are managing more output
+   -
+
+   An AI-native SDLC fixes bottlenecks
+   -
+
+   Only 23% of leaders have an AI strategy
+
+Download the full State of DevEx 2026 Report today
+.
+
+
+AI & SECURITY
+🔓 *One hacker’s AI agents break into 100+ companies
+*
+
+Image source: NorForge
+
+*The Rundown: *Security firm NorForge revealed
+
+that a Chinese-speaking hacker let AI agents do nearly all the work to
+successfully break into the websites of 100+ companies, with Reuters
+identifying victims like Cummins, Deere, and SharkNinja in the hack.
+
+*The details:*
+
+   -
+
+   NorForge watched the attacks after finding 20+ hacker control panels for
+   Cairn, an open-source tool for AI agents, left online with no password.
+   -
+
+   The hacker fed the agents a pre-screened list of busy online stores and
+   orders under 100 Chinese characters, then sent them after over 1,200 sites.
+   -
+
+   NorForge puts AI costs near $50 per successful break-in, with a typical
+   one taking nearly a day using Claude Code and DeepSeek V4.1 Flash.
+   -
+
+   It’s unclear if any data was taken, with SharkNinja calling the threat
+   contained, Deere citing “remediation actions,” and Cummins “investigating.”
+
+*Why it matters: *A month ago, we were writing
+
+about “three guys with Claude” breaking into OpenAI, and now it’s one
+hacker with an estimated $5K in tokens and a short note to their agents
+hitting 100+ companies. AI’s offensive cyber capabilities are outpacing the
+defensive ones, and a lot of companies are about to be caught in the
+crosshairs.
+
+AI TRAINING
+🎙️ *Try ChatGPT’s new voices with GPT-Live-1.1
+*
+
+*The Rundown:* In this guide, you’ll try ChatGPT’s new voices, compare them
+with the same short passage, and check whether a spoken correction reaches
+the final answer.
+
+*Step-by-step:*
+
+   1.
+
+   Open ChatGPT’s Voice settings and choose Live where available. Pick a
+   voice and start a new chat with the guide’s fictional workshop notice
+   2.
+
+   Ask it to read the notice, then try the same words with another voice.
+   Keep the language and instructions fixed so the comparison stays useful
+   3.
+
+   Try a regional voice in a language you know well. Listen for clear
+   names, dates, and numbers, and ask for a slower repeat when needed
+   4.
+
+   Interrupt the notice with a new date and headcount. Check that those
+   details change while the time and budget stay fixed
+   5.
+
+   Ask Voice to search OpenAI’s release notes. Open its source link and
+   check the answer rather than trusting the spoken search cue alone
+
+*Pro tip:* A new voice and a new model are different changes. Comparing
+Bubbie with your usual voice does not prove a gain over GPT-Live-1. Pro
+members get the practice prompts and listening checklist.
+
+PRESENTED BY OPTIMIZELY
+🤖 *Find high-value AI use cases*
+
+
+
+*The Rundown:* Most AI planning starts with the wrong question. Instead of
+asking “What should AI do?”, ask “Where does the work break?” Optimizely’s
+template helps you identify high-value AI use cases by finding the manual
+work slowing you down.
+
+*This template gives you:*
+
+   -
+
+   A personalized AI use case in minutes
+   -
+
+   The same process that turned a 2-3 hour GA4 reporting task into a
+   5-minute one
+   -
+
+   A use case mapped to how your team actually works, not a generic list of
+   ideas
+
+Download the template
+.
+
+
+INCEPTION
+⚡️ *Inception’s Mercury 3 speeds past rivals
+*
+
+Image source: Inception
+
+*The Rundown: *AI startup Inception just launched
+
+Mercury 3, a “diffusion” language model it says matches or beats OpenAI’s
+GPT-6 Luna and Anthropic’s Claude Haiku 5.5 by its own numbers at 4-8x
+their speed.
+
+*The details: *
+
+   -
+
+   Language models write one at a time, while diffusion models draft many
+   words at once and refine them, leading to outputs of 1,000+ tokens a
+   second.
+   -
+
+   Inception pitches it as useful for apps where any lag shows, with early
+   users running live tutors, voice customer support, and web-browsing agents
+   on it.
+   -
+
+   Mercury 3 is priced at $0.20/$0.70 per million tokens, with the company
+   saying the model is 40x the size of Mercury 1 while still maintaining the
+   same speeds.
+   -
+
+   Co-founder Stefano Ermon said scaling diffusion is limited by “compute
+   and data, not fundamental algorithmic barriers,” and a successor is already
+   in training.
+
+*Why it matters: *Mercury 3 won’t replace the frontier AI people use for
+hard reasoning, and Inception isn’t pretending it will. But with OpenAI’s
+Cerebras partnership and a new Ultrafast tier that pushes GPT-6 Astra as
+high as 300 tokens/s, speed is clearly the next battleground — and
+Inception is betting an alternative model type can win it.
+
+*QUICK HITS*
+
+COMMUNITY AI WORKFLOW OF THE DAY
+
+▸ *A reader built a voice-enabled task management system with Claude*
+
+*Today’s workflow comes from an anonymous Rundown reader:*
+
+I’m 78, and I run a homestead, a home server, and a senior center, with
+dozens of jobs underway at once. Most jobs get done a piece at a time,
+while to-do apps only track whether something is “done” or “not done.”
+
+So I built Taskmaster: a plain-text ledger inside a Claude Project. I first
+tried building a large custom app, then scrapped it. One of my own rules
+is, “Build the ugly version first.”
+
+In the field, I speak notes into the Claude app on my phone. Claude saves
+my exact words, updates each job’s progress, and asks me one question at a
+time when something is unclear. When I ask, “What’s next?” it considers
+deadlines, weather, and my energy level, then gives me one to three things
+to do.
+
+Anything tied to a specific time goes on my Google Calendar. Home Assistant
+then reads the reminder aloud through my hearing aids. Today, it checked
+the forecast and scheduled my paint job for the one day this week that
+stays above 50°F overnight. The machine carries the complexity, so I don’t
+have to.
+
+*See the workflow on our Community Workflow Hub
+*
+→
+
+
+What have you fixed or built with AI lately? *Share your workflow
+*,
+and you could be featured right here in The Rundown.
+
+🛠️ *Trending AI Tools
+*
+
+
+   -
+
+   ⚡ Robin by Atera
+
+   - AI agent that autonomously resolves T1 & complex T2 IT incidents end to
+   end, no technician needed*
+   -
+
+   📽️ FLUX 3 Max
+
+   - Black Forest Labs’ fast text-to-video AI with voices and sound
+   -
+
+   💨 Mercury 3
+
+   - Inception’s speed-focused diffusion AI rivaling GPT-6 Luna
+   -
+
+   🔎 Exa 3.0
+
+   - Exa’s SOTA web search for AI agents
+
+**Sponsored Listing*
+
+📰 *Everything else in AI today
+*
+
+*CData’s Foundations for AI* *virtual event* on Nov. 5 covers why agents
+need an AI Gateway to govern access and spending, and features insights
+from Anaqua’s CIO on rolling out AI. Register here
+.*
+
+
+*Elon Musk *said he will give a SpaceX share to “every kid in America”
+starting next year via Trump Accounts, responding
+
+to the news of Anthropic’s Public Benefit Fund.
+
+*The U.S. Dept. of Homeland Security* formally
+
+banned DeepSeek from civilian agency systems, giving departments 60 days to
+request exceptions and extending the ban to third-party tools built on the
+Chinese lab’s models.
+
+*Black Forest Labs* released
+
+FLUX 3 Max, a sped-up FLUX 3 built with fal that it says matches Seedance
+2.5 on quality at 22x the speed, rendering 10s clips in 12 seconds.
+
+*Chinese AI lab MiniMax *launched
+
+M3.1 Flash, a new model previously tested as “Space Bunny”, scoring well on
+coding and computer use at an extremely low price.
+
+**Sponsored Listing*
+
+*🎓 **Highlights: News, Guides & Events
+*
+
+
+   -
+
+   Read our last AI newsletter: Anthropic designs a pay package for the
+   public
+
+   -
+
+   Read our last Tech newsletter: Elon Musk’s ‘flying car’ is here
+
+   -
+
+   Read our last Robotics newsletter: SoftBank’s $18B bet on robot guards
+
+   -
+
+   Today’s AI tool guide: Try ChatGPT’s new voices with GPT-Live-1.1
+
+   -
+
+   RSVP to next workshop on Oct. 21: *Get real work out of Microsoft
+   Copilot
+   *
+
+That's it for today!
+
+Before you go we’d love to know what you thought of today's newsletter to
+help us improve The Rundown experience for you.
+
+⭐️⭐️⭐️⭐️⭐️ Nailed it
+
+
+⭐️⭐️⭐️ Average
+
+
+⭐️ Fail
+
+
+See you soon,
+
+*Rowan, Zach, Shubham, Jennifer, and Nate — the humans behind The Rundown*
+
+[image: fb]
+
+[image:
+tw]
+
+[image:
+ig]
+
+[image:
+thds]
+
+[image:
+yt]
+
+[image:
+in]
+
+
+Want to sponsor us and get in front of 2,000,000+ AI enthusiasts? *Get in
+touch
+*
+*.*
+
+Keep up with everything Tech? *Join The Rundown Tech
+*
+*.*
+
+Curious about Robotics? *Join The Rundown Robotics
+*
+*.*
+
+Was this email forwarded to you? *Sign up here
+*
+*.*
+
+Interested in podcasts? *Check out ours here
+*
+*.*
+
+Go deeper? *Join the AI University
+*
+*.*
+
+Update your email preferences or unsubscribe here
+
+
+© 2026 The Rundown AI, Inc
+
+112 - 970 Burrard Street, Office #1504
+
+Vancouver, BC V6Z 2R4, Canada
+
+
