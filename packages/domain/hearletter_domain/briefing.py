@@ -213,6 +213,7 @@ class BriefingScript:
     text: str
     created_at: str
     fingerprint: str = ""  # identifies the exact set of newsletter content in this episode
+    source_names: tuple[str, ...] = ()
     version: int = 1  # 1 for the day's first episode, 2+ when later newsletters change it
     writer: str = "template"  # "template" or the Claude model id that wrote the text
     template_text: str | None = None  # template draft kept for comparison when AI-written
@@ -222,7 +223,13 @@ class BriefingScript:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> BriefingScript:
-        return cls(**{**value, "sources": tuple(value.get("sources", []))})
+        return cls(
+            **{
+                **value,
+                "sources": tuple(value.get("sources", [])),
+                "source_names": tuple(value.get("source_names", [])),
+            }
+        )
 
 
 def briefing_fingerprint(newsletters: Iterable[StagedNewsletter]) -> str:

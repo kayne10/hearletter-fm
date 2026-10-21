@@ -151,3 +151,81 @@ def test_each_version_of_a_day_gets_its_own_mp3_and_email(tmp_path: Path) -> Non
         "ep_20261012_abc.mp3",
         "ep_20261012_def.mp3",
     ]
+
+
+def test_feed_is_rebuilt_and_email_uses_permanent_links(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    processed = LocalObjectStore(tmp_path / "processed")
+    audio = LocalObjectStore(tmp_path / "audio")
+    today = datetime.now(UTC).date().isoformat()
+    script = dataclasses.replace(SCRIPT, episode_date=today, source_names=("TLDR", "Morning Brew"))
+    put_json(processed, "scripts/x/script.json", script.to_dict())
+    sent: list[EpisodeEmail] = []
+    base = "https://d123.cloudfront.net/tok"
+
+    result = producer.produce_episode(
+        processed,
+        "scripts/x/script.json",
+        audio=audio,
+        tts_factory=FakeTTS,
+        link_for=lambda key: f"{base}/{key}",
+        send_email=lambda email: sent.append(email) or "msg",
+        from_email="no-reply@beta.hearletter.fm",
+        url_ttl_seconds=None,
+        feed_base_url=base,
+    )
+
+    assert result["status"] == "sent"
+    feed = audio.get_bytes("feeds/reader_example.com/feed.xml").decode()
+    assert f"{base}/episodes/reader_example.com/{today}/ep_20261012_abc.mp3" in feed
+    assert "From TLDR, Morning Brew. Good morning." in feed
+    email = sent[0]
+    assert email.url_ttl_seconds is None
+    assert email.feed_url == f"{base}/feeds/reader_example.com/feed.xml"
+    assert email.sources == ("TLDR", "Morning Brew")
+
+
+def test_rebuild_all_feeds_covers_every_listener(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    audio = LocalObjectStore(tmp_path / "audio")
+    today = datetime.now(UTC).date().isoformat()
+    for slug in ("a_example.com", "b_example.com"):
+        put_json(
+            audio,
+            f"episodes/{slug}/{today}/ep_{slug}.json",
+            {
+                "episode_id": f"ep_{slug}",
+                "title": "Morning Briefing",
+                "episode_date": today,
+                "audio_key": f"episodes/{slug}/{today}/ep_{slug}.mp3",
+                "byte_length": 1,
+                "published_at": f"{today}T12:00:00Z",
+            },
+        )
+        put_json(audio, f"episodes/{slug}/{today}/ep_{slug}.notified.json", {"message_id": "m"})
+
+    urls = producer.rebuild_all_feeds(audio, base_url="https://cf/tok", days=7)
+
+    assert urls == [
+        "https://cf/tok/feeds/a_example.com/feed.xml",
+        "https://cf/tok/feeds/b_example.com/feed.xml",
+    ]
+    assert "ep_b_example.com.mp3" in audio.get_bytes("feeds/b_example.com/feed.xml").decode()
+
+
+def test_email_text_without_expiry_includes_feed_link() -> None:
+    from hearletter_shared.notification import text_body
+
+    email = EpisodeEmail(
+        to_email="r@example.com",
+        from_email="no-reply@x",
+        title="T",
+        audio_url="https://cf/tok/a.mp3",
+        sources=("TLDR",),
+        url_ttl_seconds=None,
+        feed_url="https://cf/tok/feeds/r/feed.xml",
+    )
+    body = text_body(email)
+    assert "expires" not in body and "https://cf/tok/feeds/r/feed.xml" in body

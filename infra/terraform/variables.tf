@@ -158,3 +158,9 @@ variable "polly_voice_id" {
   type        = string
   default     = "Danielle"
 }
+
+variable "feed_days" {
+  description = "How many days of episodes the private podcast feed lists."
+  type        = number
+  default     = 7
+}

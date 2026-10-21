@@ -72,6 +72,21 @@ To save decoded non-text parts such as inline images:
 python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
 ```
 
+## Listening In A Podcast App
+
+Episodes are published to a private podcast feed, served by CloudFront and gated by a secret
+token in the URL. It lists the last 7 days, using the latest version of each day. Print your
+subscribe URL once after deploying:
+
+```bash
+make feed
+```
+
+Paste it into Apple Podcasts ("Follow a Show by URL") or Overcast ("Add URL"). New episodes
+then appear automatically. Every episode email also includes the feed link, and its MP3 link
+no longer expires. Treat the URL like a password. To rotate it, run
+`terraform apply -replace=random_password.feed_token ...` and subscribe again.
+
 ## Generating Today's Episode On Demand
 
 Forward the newsletters, then run:

@@ -1,0 +1,24 @@
+// CloudFront viewer-request function: the secret path token gates the private podcast feed.
+// Only /<token>/feeds/**.xml and /<token>/episodes/**.mp3 are served; the token is stripped
+// before the request reaches the private S3 origin.
+var TOKEN = "${token}";
+
+function forbidden() {
+  return { statusCode: 403, statusDescription: "Forbidden" };
+}
+
+function handler(event) {
+  var request = event.request;
+  var prefix = "/" + TOKEN + "/";
+  if (request.uri.indexOf(prefix) !== 0) {
+    return forbidden();
+  }
+  var path = request.uri.substring(prefix.length - 1);
+  var isFeed = path.indexOf("/feeds/") === 0 && path.slice(-4) === ".xml";
+  var isAudio = path.indexOf("/episodes/") === 0 && path.slice(-4) === ".mp3";
+  if (!isFeed && !isAudio || path.indexOf("..") !== -1) {
+    return forbidden();
+  }
+  request.uri = path;
+  return request;
+}

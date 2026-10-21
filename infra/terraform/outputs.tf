@@ -45,3 +45,9 @@ output "briefing_flush_schedule" {
   description = "Daily deadline that builds the briefing from whatever has arrived."
   value       = local.briefing_flush_at == null ? "disabled" : "${local.briefing_flush_at} ${local.briefing_config.timezone}"
 }
+
+output "podcast_feed_base_url" {
+  description = "Secret base URL for the private feed. Feeds live at <base>/feeds/<forwarder-slug>/feed.xml; run `make feed` to print yours."
+  value       = local.feed_base_url
+  sensitive   = true
+}

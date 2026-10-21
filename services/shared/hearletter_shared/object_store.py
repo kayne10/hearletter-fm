@@ -27,6 +27,7 @@ class ObjectStore(Protocol):
         *,
         content_type: str,
         if_absent: bool = False,
+        cache_control: str | None = None,
     ) -> bool:
         """Write an object. With if_absent, return False instead of overwriting."""
         ...
@@ -77,8 +78,11 @@ class S3ObjectStore:
         *,
         content_type: str,
         if_absent: bool = False,
+        cache_control: str | None = None,
     ) -> bool:
         extra: dict[str, str] = {"IfNoneMatch": "*"} if if_absent else {}
+        if cache_control:
+            extra["CacheControl"] = cache_control
         try:
             self._s3.put_object(
                 Bucket=self.name, Key=key, Body=body, ContentType=content_type, **extra
@@ -120,6 +124,7 @@ class LocalObjectStore:
         *,
         content_type: str,
         if_absent: bool = False,
+        cache_control: str | None = None,
     ) -> bool:
         path = self._path(key)
         if if_absent and path.exists():

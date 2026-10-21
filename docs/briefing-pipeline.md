@@ -188,11 +188,24 @@ terraform apply \
 ```
 
 
+## Private podcast feed
+
+`infra/terraform/feed.tf` puts CloudFront in front of the audio bucket using origin access
+control, so the bucket stays private. A CloudFront Function requires a random token as the first
+path segment. With the token present, it serves only `feeds/**.xml` and `episodes/**.mp3`, and it
+strips the token before reaching S3.
+
+After each episode the producer rewrites `feeds/<forwarder>/feed.xml`. It lists the last
+`feed_days` days, default 7, using the newest version of each day, with the script's opening as
+show notes. The feed is cached for 5 minutes, and `itunes:block` keeps it out of podcast
+directories. `make feed` rebuilds every feed from existing episodes and prints the URLs.
+
+For personal use there is one shared token. With multiple listeners, give each forwarder its own
+token, for example an HMAC of the forwarder checked in the CloudFront Function, so one listener's
+URL can't read another's feed.
+
 ## Known limits
 
-- Presigned links are signed with the Lambda role's temporary credentials. They stop working when
-  those credentials expire (hours), even though the email says 7 days. Serving MP3s through
-  CloudFront with signed URLs, or attaching small MP3s to the email, fixes this.
 - A day with a missing newsletter waits until you run a manual flush. If short days become
   common, a quiet period works at any hour: build 30 minutes after the day's last arrival.
 - Claude writes the script, but the voice is still OpenAI TTS by default, because Claude has
