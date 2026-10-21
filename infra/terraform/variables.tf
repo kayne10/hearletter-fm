@@ -143,9 +143,9 @@ variable "polly_region" {
 }
 
 variable "polly_engine" {
-  description = "Polly engine: generative (most natural), long-form, neural, or standard. Must be offered in polly_region for polly_voice_id."
+  description = "Polly engine: long-form (built for long narration), generative, neural, or standard. Must be offered in polly_region for polly_voice_id."
   type        = string
-  default     = "generative"
+  default     = "long-form"
 
   validation {
     condition     = contains(["generative", "long-form", "neural", "standard"], var.polly_engine)
@@ -154,7 +154,7 @@ variable "polly_engine" {
 }
 
 variable "polly_voice_id" {
-  description = "Polly voice id; must support polly_engine."
+  description = "Polly voice id; must support polly_engine. Long-form en-US voices in us-east-1: Danielle, Ruth, Gregory, Patrick (Joanna is generative only)."
   type        = string
-  default     = "Joanna"
+  default     = "Danielle"
 }
