@@ -5,6 +5,40 @@
   "min_sources": null,
   "flush_at": null,
   "allowed_forwarders": [],
+  "editorial": {
+    "target_minutes": 7,
+    "candidates_per_source": 6,
+    "topics": [
+      {
+        "name": "Tech and programming",
+        "weight": 4,
+        "examples": "software engineering, programming languages and tools, developer platforms, infrastructure and cloud, chips, big tech product launches"
+      },
+      {
+        "name": "AI agent development",
+        "weight": 3,
+        "examples": "building with AI agents, coding agents, agent frameworks and tool use, agent security, model releases that change what agents can do"
+      },
+      {
+        "name": "News and politics",
+        "weight": 2,
+        "examples": "government and regulation, courts, elections, world events, economy"
+      },
+      {
+        "name": "Humor and light stories",
+        "weight": 1,
+        "examples": "quirky, funny, or feel-good items"
+      }
+    ],
+    "rules": [
+      "Lead with the strongest tech or programming story of the day.",
+      "Cover every newsletter at least once.",
+      "Merge the same story from different newsletters into one segment.",
+      "Keep any single story under about 90 seconds.",
+      "If there is a light or funny story, save it for last, just before the sign-off.",
+      "Skip sponsored content, job posts, and product promotions."
+    ]
+  },
   "sources": [
     {
       "email": "dan@tldrnewsletter.com",

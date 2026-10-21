@@ -425,7 +425,7 @@ def test_tldr_and_rundown_use_their_template_parsers(
     assert [s["title"] for s in staged["The Rundown"]["stories"]][1] == (
         "One hacker’s AI agents break into 100+ companies"
     )
-    assert len(staged["TLDR"]["stories"]) == config.max_stories_per_source
+    assert len(staged["TLDR"]["stories"]) == config.stories_to_stage
 
 
 def test_parser_that_finds_nothing_falls_back_to_generic(

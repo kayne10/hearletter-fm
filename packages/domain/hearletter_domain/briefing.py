@@ -51,6 +51,38 @@ class NewsletterSource:
 
 
 @dataclass(frozen=True, slots=True)
+class TopicWeight:
+    """A topic the listener cares about; weights are relative to each other."""
+
+    name: str
+    weight: float
+    examples: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class EditorialConfig:
+    """Priorities and house rules handed to the AI script writer."""
+
+    target_minutes: float = 7.0
+    words_per_minute: int = 150
+    candidates_per_source: int = 6  # stories per newsletter the writer can choose from
+    topics: tuple[TopicWeight, ...] = ()
+    rules: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.target_minutes <= 30:
+            raise ValueError("editorial.target_minutes must be between 1 and 30")
+        if self.candidates_per_source < 1:
+            raise ValueError("editorial.candidates_per_source must be at least 1")
+        if any(topic.weight <= 0 or not topic.name.strip() for topic in self.topics):
+            raise ValueError("editorial.topics need a name and a weight above 0")
+
+    @property
+    def target_words(self) -> int:
+        return round(self.target_minutes * self.words_per_minute)
+
+
+@dataclass(frozen=True, slots=True)
 class BriefingConfig:
     """Which newsletters make up one briefing and how it is assembled."""
 
@@ -61,6 +93,7 @@ class BriefingConfig:
     min_sources: int | None = None
     allowed_forwarders: tuple[str, ...] = ()
     flush_at: str | None = None  # local HH:MM deadline to build with whatever has arrived
+    editorial: EditorialConfig = field(default_factory=EditorialConfig)
 
     def __post_init__(self) -> None:
         if not self.sources:
@@ -69,6 +102,12 @@ class BriefingConfig:
             raise ValueError("min_sources must be between 1 and the number of sources")
         if self.flush_at is not None and not _LOCAL_TIME_RE.match(self.flush_at):
             raise ValueError("flush_at must be a 24-hour local time like 08:00")
+
+    @property
+    def stories_to_stage(self) -> int:
+        """Stage enough stories for the AI writer; the template still reads the first few."""
+
+        return max(self.max_stories_per_source, self.editorial.candidates_per_source)
 
     @property
     def required_source_count(self) -> int:
@@ -124,6 +163,7 @@ class Story:
     title: str
     summary: str
     source_text: str = ""  # fuller cleaned excerpt, used by the AI script writer
+    section: str = ""  # the newsletter's own section label, e.g. "Big Tech & Startups"
 
 
 @dataclass(frozen=True, slots=True)

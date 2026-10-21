@@ -231,7 +231,7 @@ def stage_raw_email(
 
     clean_text, _ = clean_newsletter_content(html=newsletter.html, text=newsletter.text)
     stories, extractor = extract_stories(
-        source.parser, newsletter.text, clean_text, max_stories=config.max_stories_per_source
+        source.parser, newsletter.text, clean_text, max_stories=config.stories_to_stage
     )
     staged = StagedNewsletter(
         forwarder=newsletter.forwarder,
@@ -266,7 +266,9 @@ def extract_stories(
     if parser is not None and text:
         parsed = parser(text)
         if parsed:
-            stories = tuple(story_from_parsed(item.title, item.text) for item in parsed)
+            stories = tuple(
+                story_from_parsed(item.title, item.text, item.section) for item in parsed
+            )
             return stories[:max_stories], str(parser_name)
         log_json("story_parser_found_nothing", parser=parser_name)
     candidates = extract_story_candidates(clean_text, max_stories=max_stories)
