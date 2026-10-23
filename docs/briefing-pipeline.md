@@ -204,6 +204,29 @@ For personal use there is one shared token. With multiple listeners, give each f
 token, for example an HMAC of the forwarder checked in the CloudFront Function, so one listener's
 URL can't read another's feed.
 
+## Web player
+
+The `web/player/` folder holds a static, dependency-free page with `index.html`, `styles.css`,
+`app.js` and `lib.js`. Terraform uploads it to `player/` in the audio bucket. CloudFront serves
+it behind the same token at `<feed base>/player/#<forwarder>/<episode_id>`. The fragment never
+leaves the browser.
+
+- **Data:** the page fetches `feeds/<forwarder>/episodes.json`. The producer writes it next to
+  `feed.xml` with the same 7-day selection. Audio paths are relative, so the token never appears
+  in the file, and the page validates every entry before using it.
+- **Playback:** large controls, skip back 15 seconds and forward 30, speed from 1x to 2x, and
+  the Media Session API for lock-screen and headphone controls. Position, speed and played state
+  are kept in `localStorage` on each device. A position is saved every 5 seconds and whenever
+  the page is hidden.
+- **Security:** the URL contains the token, so the page sends no referrer and is marked
+  `noindex`. Its content-security policy allows only its own scripts, styles, data and audio.
+  Episode text is rendered with `textContent`, never `innerHTML`.
+- **Switching back:** `episode_link` controls the email link. `player` is the default. `mp3`
+  links straight to the MP3, which is a permanent CloudFront URL, or a presigned S3 URL if the
+  feed isn't deployed. The player files stay deployed either way.
+- **Tests:** `make test-web` runs the player-logic tests and the CloudFront Function tests.
+  `make preview-player` serves the real page locally with sample audio.
+
 ## Known limits
 
 - A day with a missing newsletter waits until you run a manual flush. If short days become

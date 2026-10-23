@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- The URL carries the secret feed token: never leak it in Referer headers. -->
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; media-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#14161c" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Hearletter" />
+    <title>Hearletter FM</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>Hearletter FM</h1>
+      <p class="tagline">Your morning briefing</p>
+    </header>
+
+    <main>
+      <p id="status" class="status" role="status" hidden></p>
+
+      <section id="now-playing" class="now-playing" aria-label="Now playing" hidden>
+        <p id="episode-date" class="episode-date"></p>
+        <h2 id="episode-title" class="episode-title"></h2>
+        <p id="episode-summary" class="summary"></p>
+
+        <div class="progress">
+          <input id="seek" type="range" min="0" max="0" step="1" value="0" aria-label="Seek" />
+          <div class="times">
+            <span id="elapsed">0:00</span>
+            <span id="remaining">-0:00</span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="back" class="control skip" type="button" aria-label="Back 15 seconds">
+            <span aria-hidden="true">↺</span><small>15</small>
+          </button>
+          <button id="play" class="control play" type="button" aria-label="Play">
+            <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+            <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zm6 0h4v14h-4z" /></svg>
+          </button>
+          <button id="forward" class="control skip" type="button" aria-label="Forward 30 seconds">
+            <span aria-hidden="true">↻</span><small>30</small>
+          </button>
+        </div>
+
+        <button id="rate" class="rate" type="button" aria-label="Playback speed">1×</button>
+      </section>
+
+      <section class="episodes-section" aria-labelledby="episodes-heading">
+        <h2 id="episodes-heading" class="list-heading">This week</h2>
+        <ol id="episodes" class="episodes"></ol>
+      </section>
+    </main>
+
+    <audio id="audio" preload="metadata"></audio>
+  </body>
+</html>

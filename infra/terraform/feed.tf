@@ -1,4 +1,4 @@
-# Private podcast feed (personal use).
+# Private podcast feed and web player (personal use).
 #
 # CloudFront serves the audio bucket through origin access control, so the bucket stays private.
 # A secret token in the URL path gates access: https://<distribution>/<token>/feeds/<you>/feed.xml
@@ -75,9 +75,13 @@ resource "aws_cloudfront_distribution" "feed" {
 
 data "aws_iam_policy_document" "audio_bucket" {
   statement {
-    sid       = "CloudFrontReadsFeedsAndEpisodes"
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.audio.arn}/feeds/*", "${aws_s3_bucket.audio.arn}/episodes/*"]
+    sid     = "CloudFrontReadsFeedsAndEpisodes"
+    actions = ["s3:GetObject"]
+    resources = [
+      "${aws_s3_bucket.audio.arn}/feeds/*",
+      "${aws_s3_bucket.audio.arn}/episodes/*",
+      "${aws_s3_bucket.audio.arn}/player/*",
+    ]
 
     principals {
       type        = "Service"
@@ -96,4 +100,30 @@ resource "aws_s3_bucket_policy" "audio" {
   bucket     = aws_s3_bucket.audio.id
   policy     = data.aws_iam_policy_document.audio_bucket.json
   depends_on = [aws_s3_bucket_public_access_block.pipeline]
+}
+
+# --- Web player ------------------------------------------------------------------------------
+# Static files from web/player/, served at <feed base>/player/. The page reads
+# feeds/<forwarder>/episodes.json, which the producer writes next to feed.xml. Editing a file
+# and applying re-uploads it (etag); CloudFront and browsers pick it up within 5 minutes.
+
+locals {
+  player_source_dir = "${path.module}/../../web/player"
+  player_content_types = {
+    html = "text/html; charset=utf-8"
+    js   = "text/javascript; charset=utf-8"
+    css  = "text/css; charset=utf-8"
+  }
+}
+
+resource "aws_s3_object" "player" {
+  for_each = fileset(local.player_source_dir, "*.{html,js,css}")
+
+  bucket        = aws_s3_bucket.audio.id
+  key           = "player/${each.value}"
+  source        = "${local.player_source_dir}/${each.value}"
+  etag          = filemd5("${local.player_source_dir}/${each.value}")
+  content_type  = local.player_content_types[regex("[a-z]+$", each.value)]
+  cache_control = "max-age=300"
+  tags          = local.common_tags
 }

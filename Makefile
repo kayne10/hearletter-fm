@@ -1,4 +1,4 @@
-.PHONY: test test-feed-function compile local-briefing episode feed package-lambdas package-lambdas-no-deps terraform-fmt terraform-fmt-check
+.PHONY: test test-web preview-player test-feed-function compile local-briefing episode feed package-lambdas package-lambdas-no-deps terraform-fmt terraform-fmt-check
 
 AWS_REGION ?= us-east-2
 BRIEFING_BUILDER ?= hearletter-fm-dev-briefing-builder
@@ -7,7 +7,15 @@ EPISODE_PRODUCER ?= hearletter-fm-dev-episode-producer
 test:
 	python3 -m pytest
 
-# CloudFront feed-token function (JavaScript); needs Node.
+# JavaScript tests (web player logic, CloudFront feed-token function); needs Node 20+.
+test-web:
+	node --test "tests/player/*.test.mjs"
+	node tests/cloudfront/feed_token.test.js
+
+# Serve the web player locally with sample episodes (no AWS needed).
+preview-player:
+	python3 scripts/preview_player.py
+
 test-feed-function:
 	node tests/cloudfront/feed_token.test.js
 
@@ -39,7 +47,7 @@ episode:
 	if [ "$$err" != "None" ]; then cat "$$out"; echo; rm -f "$$out"; exit 1; fi; \
 	python3 scripts/describe_flush.py "$$out"; status=$$?; rm -f "$$out"; exit $$status
 
-# Rebuild every private podcast feed from existing episodes and print the subscribe URLs.
+# Rebuild every private podcast feed and player episode list; print the feed and player URLs.
 # The URLs contain the secret feed token: paste into your podcast app, don't share.
 feed:
 	@out=$$(mktemp); \
@@ -47,5 +55,5 @@ feed:
 		--cli-binary-format raw-in-base64-out --payload '{"action":"rebuild_feeds"}' \
 		--query FunctionError --output text "$$out") || { rm -f "$$out"; exit 1; }; \
 	if [ "$$err" != "None" ]; then cat "$$out"; echo; rm -f "$$out"; exit 1; fi; \
-	python3 -c 'import json,sys; [print(u) for u in json.load(open(sys.argv[1]))["feeds"]]' "$$out"; \
+	python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("Podcast feeds:", *r["feeds"], "Web players:", *r.get("players", []), sep="\n")' "$$out"; \
 	rm -f "$$out"

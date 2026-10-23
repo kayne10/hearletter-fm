@@ -72,11 +72,28 @@ To save decoded non-text parts such as inline images:
 python3 scripts/inspect_raw_email.py tmp/test.eml --save-attachments-dir tmp/email-parts
 ```
 
+## Listening On Your Phone
+
+Each episode email links to a mobile web player, opened on that episode. It has large
+play/skip controls, a speed setting from 1x to 2x, lock-screen and headphone controls, resume
+where you left off, and played markers. It lists the last 7 days. Add it to your home screen to
+open it like an app.
+
+To go back to the plain MP3 link in the email, apply with `-var="episode_link=mp3"`. The player
+stays deployed, so you can switch back to it at any time.
+
+Preview the player locally before deploying, using sample episodes from `artifacts/voice-samples`:
+
+```bash
+make preview-player   # open the printed URL; on a phone, use your laptop's LAN IP
+make test-web         # player logic and CloudFront function tests (Node 20+)
+```
+
 ## Listening In A Podcast App
 
 Episodes are published to a private podcast feed, served by CloudFront and gated by a secret
 token in the URL. It lists the last 7 days, using the latest version of each day. Print your
-subscribe URL once after deploying:
+subscribe and player URLs once after deploying:
 
 ```bash
 make feed

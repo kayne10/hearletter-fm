@@ -27,6 +27,17 @@ const cases = [
   ["staged newsletters", `${T}/inbox/r/2026-10-20/tldr.json`, 403],
   ["path traversal into feeds", `${T}/episodes/../feeds/r/feed.xml`, 403],
   ["path traversal into episodes", `${T}/feeds/r/../../episodes/x/a.mp3`, 403],
+  ["player root serves index.html", `${T}/player/`, "/player/index.html"],
+  ["player script", `${T}/player/app.js`, "/player/app.js"],
+  ["player module", `${T}/player/lib.js`, "/player/lib.js"],
+  ["player stylesheet", `${T}/player/styles.css`, "/player/styles.css"],
+  ["player episode list", `${T}/feeds/reader_example.com/episodes.json`, "/feeds/reader_example.com/episodes.json"],
+  ["player without token", "/player/", 403],
+  ["player without trailing slash", `${T}/player`, 403],
+  ["player subdirectory", `${T}/player/x/app.js`, 403],
+  ["player other file type", `${T}/player/secrets.json`, 403],
+  ["player traversal", `${T}/player/../inbox/a.json`, 403],
+  ["other json under feeds", `${T}/feeds/r/other.json`, 403],
 ];
 
 let failed = 0;

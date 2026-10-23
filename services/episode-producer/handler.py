@@ -4,8 +4,10 @@ Trigger: S3 ObjectCreated on the processed bucket (scripts/**/script.json), invo
 asynchronously. Lambda retries failures twice, then sends the event to the episode DLQ.
 
 When FEED_BASE_URL is set (CloudFront + secret path token), the producer also rewrites the
-listener's private podcast feed after each episode, and the email links to the permanent
-CloudFront URL instead of an expiring presigned S3 link. Invoke with {"action": "rebuild_feeds"}
+listener's private podcast feed and the web player's episodes.json after each episode.
+EPISODE_LINK picks what the email links to: "player" (the mobile web player, opened on that
+episode) or "mp3" (the MP3 itself: permanent CloudFront URL, or a presigned S3 URL without a
+feed). Invoke with {"action": "rebuild_feeds"}
 to regenerate every feed from existing episodes.
 
 Idempotent: every file is keyed by the episode id, which is derived from the script's content
@@ -34,7 +36,9 @@ from hearletter_shared.podcast_feed import (
     DEFAULT_FEED_DAYS,
     FEED_CACHE_CONTROL,
     FeedEpisode,
+    build_episodes_json,
     build_feed_xml,
+    episodes_json_key,
     feed_key,
     recent_episodes,
 )
@@ -42,6 +46,7 @@ from hearletter_shared.tts import TTSProvider, build_tts_provider, synthesize_lo
 
 AUDIO_CONTENT_TYPE = "audio/mpeg"
 REBUILD_FEEDS_ACTION = "rebuild_feeds"
+EPISODE_LINK_MODES = ("player", "mp3")
 SUMMARY_MAX_CHARS = 600
 
 
@@ -58,15 +63,19 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     feed_days = int(os.environ.get("FEED_DAYS", DEFAULT_FEED_DAYS))
     ttl = int(os.environ.get("AUDIO_URL_TTL_SECONDS", DEFAULT_URL_TTL_SECONDS))
     from_email = os.environ["NOTIFICATION_FROM_EMAIL"]
+    link_mode = episode_link_mode(os.environ.get("EPISODE_LINK", "mp3"), feed_base_url)
 
     if event.get("action") == REBUILD_FEEDS_ACTION:
         if feed_base_url is None:
             raise RuntimeError("FEED_BASE_URL is not configured")
         feeds = rebuild_all_feeds(audio, base_url=feed_base_url, days=feed_days)
-        log_json("feeds_rebuilt", feeds=feeds)
-        return {"feeds": feeds}
+        players = [player_url(feed_base_url, feed_url) for feed_url in feeds]
+        log_json("feeds_rebuilt", count=len(feeds))  # URLs carry the secret token: don't log
+        return {"feeds": feeds, "players": players}
 
     def link_for(audio_key: str) -> str:
+        if feed_base_url and link_mode == "player":
+            return player_link(feed_base_url, audio_key)
         if feed_base_url:
             return f"{feed_base_url}/{audio_key}"
         return presigned_audio_url(s3_client, bucket=audio_bucket, key=audio_key, expires_in=ttl)
@@ -168,6 +177,32 @@ def produce_episode(
     }
 
 
+def episode_link_mode(value: str, feed_base_url: str | None) -> str:
+    """Validate EPISODE_LINK; the player needs the CloudFront feed to exist."""
+
+    mode = value.strip().lower()
+    if mode not in EPISODE_LINK_MODES:
+        raise RuntimeError(f"EPISODE_LINK must be one of {EPISODE_LINK_MODES}, got {value!r}")
+    if mode == "player" and not feed_base_url:
+        raise RuntimeError("EPISODE_LINK=player needs FEED_BASE_URL (the CloudFront feed)")
+    return mode
+
+
+def player_url(base_url: str, feed_url: str) -> str:
+    """Player URL for a feed: <base>/player/#<forwarder-slug>."""
+
+    forwarder_slug = feed_url.removeprefix(f"{base_url}/").split("/")[1]
+    return f"{base_url}/player/#{forwarder_slug}"
+
+
+def player_link(base_url: str, audio_key: str) -> str:
+    """Web player URL opened on one episode: <base>/player/#<forwarder-slug>/<episode_id>."""
+
+    _, forwarder_slug, _, filename = audio_key.split("/")
+    episode_id = filename.removesuffix(".mp3")
+    return f"{base_url}/player/#{forwarder_slug}/{episode_id}"
+
+
 def episode_summary(script: BriefingScript) -> str:
     """Podcast show notes: sources plus the script's opening paragraph."""
 
@@ -181,21 +216,22 @@ def episode_summary(script: BriefingScript) -> str:
 def rebuild_feed(audio: ObjectStore, forwarder_slug: str, *, base_url: str, days: int) -> str:
     """Rewrite one listener's feed from their episode metadata; return the feed URL."""
 
-    episodes = [
-        FeedEpisode.from_metadata(get_json(audio, key))
-        for key in audio.list_keys(f"episodes/{forwarder_slug}/")
-        if is_episode_metadata(key)
-    ]
+    episodes = load_feed_episodes(audio, forwarder_slug)
     key = feed_key(forwarder_slug)
     feed_url = f"{base_url}/{key}"
     today = datetime.now(UTC).date()
-    xml = build_feed_xml(
-        recent_episodes(episodes, today=today, days=days), base_url=base_url, feed_url=feed_url
-    )
+    recent = recent_episodes(episodes, today=today, days=days)
+    xml = build_feed_xml(recent, base_url=base_url, feed_url=feed_url)
     audio.put_bytes(
         key,
         xml.encode("utf-8"),
         content_type="application/rss+xml; charset=utf-8",
+        cache_control=FEED_CACHE_CONTROL,
+    )
+    audio.put_bytes(
+        episodes_json_key(forwarder_slug),
+        build_episodes_json(recent).encode("utf-8"),
+        content_type="application/json; charset=utf-8",
         cache_control=FEED_CACHE_CONTROL,
     )
     return feed_url
@@ -208,10 +244,30 @@ def rebuild_all_feeds(audio: ObjectStore, *, base_url: str, days: int) -> list[s
     return [rebuild_feed(audio, slug, base_url=base_url, days=days) for slug in slugs]
 
 
-def is_episode_metadata(key: str) -> bool:
-    """`<episode_id>.json` (or the older `episode.json`), not the `.notified.json` markers."""
+def load_feed_episodes(audio: ObjectStore, forwarder_slug: str) -> list[FeedEpisode]:
+    """Episode metadata for one listener. A malformed file is logged and skipped, so one bad
+    object can't take the whole feed down."""
 
-    return key.endswith(".json") and not key.endswith(".notified.json")
+    episodes: list[FeedEpisode] = []
+    for key in audio.list_keys(f"episodes/{forwarder_slug}/"):
+        if not is_episode_metadata(key):
+            continue
+        try:
+            episodes.append(FeedEpisode.from_metadata(get_json(audio, key)))
+        except (KeyError, TypeError, ValueError) as exc:
+            log_json("episode_metadata_skipped", key=key, error=repr(exc))
+    return episodes
+
+
+def is_episode_metadata(key: str) -> bool:
+    """`<episode_id>.json` (or the older `episode.json`), not the email markers.
+
+    Markers are `<episode_id>.notified.json`, or plain `notified.json` from before episodes
+    were versioned (before 2026-10-16).
+    """
+
+    name = key.rsplit("/", 1)[-1]
+    return name.endswith(".json") and not name.endswith("notified.json")
 
 
 def episode_prefix(script: BriefingScript) -> str:

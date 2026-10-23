@@ -8,6 +8,7 @@ them without expiring signatures.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -116,5 +117,35 @@ def rfc2822(iso_timestamp: str) -> str:
     return format_datetime(datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00")))
 
 
+def build_episodes_json(episodes: Iterable[FeedEpisode], *, title: str = FEED_TITLE) -> str:
+    """The same episodes as the RSS feed, for the web player.
+
+    `audio_path` is relative to the feed's base URL, so the player resolves it against its own
+    location and the secret token never needs to appear in this file.
+    """
+
+    payload = {
+        "title": title,
+        "episodes": [
+            {
+                "episode_id": episode.episode_id,
+                "title": episode.title,
+                "episode_date": episode.episode_date,
+                "published_at": episode.published_at,
+                "audio_path": episode.audio_key,
+                "byte_length": episode.byte_length,
+                "version": episode.version,
+                "summary": episode.summary,
+            }
+            for episode in episodes
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
 def feed_key(forwarder_slug: str) -> str:
     return f"feeds/{forwarder_slug}/feed.xml"
+
+
+def episodes_json_key(forwarder_slug: str) -> str:
+    return f"feeds/{forwarder_slug}/episodes.json"

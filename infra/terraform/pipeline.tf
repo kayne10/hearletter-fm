@@ -323,6 +323,7 @@ resource "aws_lambda_function" "episode_producer" {
       # Private podcast feed (feed.tf): permanent episode links and the RSS feed.
       FEED_BASE_URL = local.feed_base_url
       FEED_DAYS     = tostring(var.feed_days)
+      EPISODE_LINK  = var.episode_link
     }
   }
 
