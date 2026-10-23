@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 from hearletter_domain.briefing import BriefingScript
 from hearletter_shared.notification import EpisodeEmail
 from hearletter_shared.object_store import LocalObjectStore, put_json
@@ -151,3 +152,182 @@ def test_each_version_of_a_day_gets_its_own_mp3_and_email(tmp_path: Path) -> Non
         "ep_20261012_abc.mp3",
         "ep_20261012_def.mp3",
     ]
+
+
+def test_feed_is_rebuilt_and_email_uses_permanent_links(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    processed = LocalObjectStore(tmp_path / "processed")
+    audio = LocalObjectStore(tmp_path / "audio")
+    today = datetime.now(UTC).date().isoformat()
+    script = dataclasses.replace(SCRIPT, episode_date=today, source_names=("TLDR", "Morning Brew"))
+    put_json(processed, "scripts/x/script.json", script.to_dict())
+    sent: list[EpisodeEmail] = []
+    base = "https://d123.cloudfront.net/tok"
+
+    result = producer.produce_episode(
+        processed,
+        "scripts/x/script.json",
+        audio=audio,
+        tts_factory=FakeTTS,
+        link_for=lambda key: f"{base}/{key}",
+        send_email=lambda email: sent.append(email) or "msg",
+        from_email="no-reply@beta.hearletter.fm",
+        url_ttl_seconds=None,
+        feed_base_url=base,
+    )
+
+    assert result["status"] == "sent"
+    feed = audio.get_bytes("feeds/reader_example.com/feed.xml").decode()
+    assert f"{base}/episodes/reader_example.com/{today}/ep_20261012_abc.mp3" in feed
+    assert "From TLDR, Morning Brew. Good morning." in feed
+    email = sent[0]
+    assert email.url_ttl_seconds is None
+    assert email.feed_url == f"{base}/feeds/reader_example.com/feed.xml"
+    assert email.sources == ("TLDR", "Morning Brew")
+
+
+def test_rebuild_all_feeds_covers_every_listener(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    audio = LocalObjectStore(tmp_path / "audio")
+    today = datetime.now(UTC).date().isoformat()
+    for slug in ("a_example.com", "b_example.com"):
+        put_json(
+            audio,
+            f"episodes/{slug}/{today}/ep_{slug}.json",
+            {
+                "episode_id": f"ep_{slug}",
+                "title": "Morning Briefing",
+                "episode_date": today,
+                "audio_key": f"episodes/{slug}/{today}/ep_{slug}.mp3",
+                "byte_length": 1,
+                "published_at": f"{today}T12:00:00Z",
+            },
+        )
+        put_json(audio, f"episodes/{slug}/{today}/ep_{slug}.notified.json", {"message_id": "m"})
+
+    urls = producer.rebuild_all_feeds(audio, base_url="https://cf/tok", days=7)
+
+    assert urls == [
+        "https://cf/tok/feeds/a_example.com/feed.xml",
+        "https://cf/tok/feeds/b_example.com/feed.xml",
+    ]
+    assert "ep_b_example.com.mp3" in audio.get_bytes("feeds/b_example.com/feed.xml").decode()
+
+
+def test_email_text_without_expiry_includes_feed_link() -> None:
+    from hearletter_shared.notification import text_body
+
+    email = EpisodeEmail(
+        to_email="r@example.com",
+        from_email="no-reply@x",
+        title="T",
+        audio_url="https://cf/tok/a.mp3",
+        sources=("TLDR",),
+        url_ttl_seconds=None,
+        feed_url="https://cf/tok/feeds/r/feed.xml",
+    )
+    body = text_body(email)
+    assert "expires" not in body and "https://cf/tok/feeds/r/feed.xml" in body
+
+
+def test_feed_rebuild_also_writes_the_player_episode_list(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    audio = LocalObjectStore(tmp_path / "audio")
+    today = datetime.now(UTC).date().isoformat()
+    put_json(
+        audio,
+        f"episodes/r_example.com/{today}/ep_1.json",
+        {
+            "episode_id": "ep_1",
+            "title": "Morning Briefing",
+            "episode_date": today,
+            "audio_key": f"episodes/r_example.com/{today}/ep_1.mp3",
+            "byte_length": 10,
+            "published_at": f"{today}T12:00:00Z",
+            "summary": "From TLDR.",
+        },
+    )
+
+    producer.rebuild_feed(audio, "r_example.com", base_url="https://cf/tok", days=7)
+
+    listing = json.loads(audio.get_bytes("feeds/r_example.com/episodes.json"))
+    (entry,) = listing["episodes"]
+    assert entry["audio_path"] == f"episodes/r_example.com/{today}/ep_1.mp3"
+    assert entry["summary"] == "From TLDR."
+    assert "tok" not in json.dumps(listing)  # relative paths: the token stays out of the file
+
+
+def test_player_links_open_the_episode() -> None:
+    audio_key = "episodes/r_example.com/2026-10-20/ep_20261020_abc.mp3"
+
+    assert producer.player_link("https://cf/tok", audio_key) == (
+        "https://cf/tok/player/#r_example.com/ep_20261020_abc"
+    )
+    assert producer.player_url("https://cf/tok", "https://cf/tok/feeds/r_example.com/feed.xml") == (
+        "https://cf/tok/player/#r_example.com"
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "base_url", "expected"),
+    [
+        ("player", "https://cf/tok", "player"),
+        ("MP3", None, "mp3"),
+        ("mp3", "https://cf/tok", "mp3"),
+    ],
+)
+def test_episode_link_mode_accepts_valid_settings(
+    value: str, base_url: str | None, expected: str
+) -> None:
+    assert producer.episode_link_mode(value, base_url) == expected
+
+
+def test_episode_link_mode_fails_fast_on_bad_settings() -> None:
+    with pytest.raises(RuntimeError, match="must be one of"):
+        producer.episode_link_mode("webpage", "https://cf/tok")
+    with pytest.raises(RuntimeError, match="needs FEED_BASE_URL"):
+        producer.episode_link_mode("player", None)
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("episodes/r/2026-10-20/ep_20261020_abc.json", True),
+        ("episodes/r/2026-10-14/episode.json", True),  # pre-versioning metadata
+        ("episodes/r/2026-10-20/ep_20261020_abc.notified.json", False),
+        ("episodes/r/2026-10-14/notified.json", False),  # pre-versioning marker
+        ("episodes/r/2026-10-20/ep_20261020_abc.mp3", False),
+    ],
+)
+def test_is_episode_metadata(key: str, expected: bool) -> None:
+    assert producer.is_episode_metadata(key) is expected
+
+
+def test_feed_rebuild_handles_old_markers_and_skips_malformed_metadata(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    audio = LocalObjectStore(tmp_path / "audio")
+    today = datetime.now(UTC).date().isoformat()
+    prefix = f"episodes/r_example.com/{today}"
+    put_json(
+        audio,
+        f"{prefix}/episode.json",
+        {
+            "episode_id": "ep_old",
+            "title": "Morning Briefing",
+            "episode_date": today,
+            "audio_key": f"{prefix}/ep_old.mp3",
+            "byte_length": 10,
+            "published_at": f"{today}T12:00:00Z",
+        },
+    )
+    put_json(audio, f"{prefix}/notified.json", {"message_id": "m", "sent_at": "x"})
+    put_json(audio, f"{prefix}/ep_broken.json", {"title": "missing fields"})
+
+    producer.rebuild_feed(audio, "r_example.com", base_url="https://cf/tok", days=7)
+
+    listing = json.loads(audio.get_bytes("feeds/r_example.com/episodes.json"))
+    assert [entry["episode_id"] for entry in listing["episodes"]] == ["ep_old"]

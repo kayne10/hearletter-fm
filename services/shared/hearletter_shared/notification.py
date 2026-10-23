@@ -16,7 +16,8 @@ class EpisodeEmail:
     title: str
     audio_url: str
     sources: tuple[str, ...]
-    url_ttl_seconds: int
+    url_ttl_seconds: int | None  # None: permanent link (served through CloudFront)
+    feed_url: str | None = None
 
 
 def presigned_audio_url(s3_client: Any, *, bucket: str, key: str, expires_in: int) -> str:
@@ -56,12 +57,19 @@ def subject_line(title: str) -> str:
 
 
 def text_body(email: EpisodeEmail) -> str:
-    return (
-        f"{email.title}\n\n"
-        f"Built from: {', '.join(email.sources)}\n\n"
-        f"Listen here:\n{email.audio_url}\n\n"
-        f"This link expires in {human_ttl(email.url_ttl_seconds)}."
-    )
+    lines = [
+        email.title,
+        "",
+        f"Built from: {', '.join(email.sources)}",
+        "",
+        "Listen here:",
+        email.audio_url,
+    ]
+    if email.url_ttl_seconds is not None:
+        lines += ["", f"This link expires in {human_ttl(email.url_ttl_seconds)}."]
+    if email.feed_url:
+        lines += ["", "Or subscribe in your podcast app (keep this link private):", email.feed_url]
+    return "\n".join(lines)
 
 
 def html_body(email: EpisodeEmail) -> str:
@@ -71,8 +79,18 @@ def html_body(email: EpisodeEmail) -> str:
         f"<h1>{escape(email.title)}</h1>"
         f"<p>Built from: {sources}</p>"
         f'<p><a href="{escape(email.audio_url, quote=True)}">Listen to your briefing (MP3)</a></p>'
-        f"<p>This link expires in {escape(human_ttl(email.url_ttl_seconds))}.</p>"
-        "</body></html>"
+        + (
+            f"<p>This link expires in {escape(human_ttl(email.url_ttl_seconds))}.</p>"
+            if email.url_ttl_seconds is not None
+            else ""
+        )
+        + (
+            f'<p><a href="{escape(email.feed_url, quote=True)}">Subscribe in your podcast app</a>'
+            " (keep this link private)</p>"
+            if email.feed_url
+            else ""
+        )
+        + "</body></html>"
     )
 
 

@@ -320,6 +320,10 @@ resource "aws_lambda_function" "episode_producer" {
       POLLY_REGION   = var.polly_region
       POLLY_ENGINE   = var.polly_engine
       POLLY_VOICE_ID = var.polly_voice_id
+      # Private podcast feed (feed.tf): permanent episode links and the RSS feed.
+      FEED_BASE_URL = local.feed_base_url
+      FEED_DAYS     = tostring(var.feed_days)
+      EPISODE_LINK  = var.episode_link
     }
   }
 

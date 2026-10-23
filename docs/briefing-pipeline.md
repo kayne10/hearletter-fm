@@ -188,11 +188,47 @@ terraform apply \
 ```
 
 
+## Private podcast feed
+
+`infra/terraform/feed.tf` puts CloudFront in front of the audio bucket using origin access
+control, so the bucket stays private. A CloudFront Function requires a random token as the first
+path segment. With the token present, it serves only `feeds/**.xml` and `episodes/**.mp3`, and it
+strips the token before reaching S3.
+
+After each episode the producer rewrites `feeds/<forwarder>/feed.xml`. It lists the last
+`feed_days` days, default 7, using the newest version of each day, with the script's opening as
+show notes. The feed is cached for 5 minutes, and `itunes:block` keeps it out of podcast
+directories. `make feed` rebuilds every feed from existing episodes and prints the URLs.
+
+For personal use there is one shared token. With multiple listeners, give each forwarder its own
+token, for example an HMAC of the forwarder checked in the CloudFront Function, so one listener's
+URL can't read another's feed.
+
+## Web player
+
+The `web/player/` folder holds a static, dependency-free page with `index.html`, `styles.css`,
+`app.js` and `lib.js`. Terraform uploads it to `player/` in the audio bucket. CloudFront serves
+it behind the same token at `<feed base>/player/#<forwarder>/<episode_id>`. The fragment never
+leaves the browser.
+
+- **Data:** the page fetches `feeds/<forwarder>/episodes.json`. The producer writes it next to
+  `feed.xml` with the same 7-day selection. Audio paths are relative, so the token never appears
+  in the file, and the page validates every entry before using it.
+- **Playback:** large controls, skip back 15 seconds and forward 30, speed from 1x to 2x, and
+  the Media Session API for lock-screen and headphone controls. Position, speed and played state
+  are kept in `localStorage` on each device. A position is saved every 5 seconds and whenever
+  the page is hidden.
+- **Security:** the URL contains the token, so the page sends no referrer and is marked
+  `noindex`. Its content-security policy allows only its own scripts, styles, data and audio.
+  Episode text is rendered with `textContent`, never `innerHTML`.
+- **Switching back:** `episode_link` controls the email link. `player` is the default. `mp3`
+  links straight to the MP3, which is a permanent CloudFront URL, or a presigned S3 URL if the
+  feed isn't deployed. The player files stay deployed either way.
+- **Tests:** `make test-web` runs the player-logic tests and the CloudFront Function tests.
+  `make preview-player` serves the real page locally with sample audio.
+
 ## Known limits
 
-- Presigned links are signed with the Lambda role's temporary credentials. They stop working when
-  those credentials expire (hours), even though the email says 7 days. Serving MP3s through
-  CloudFront with signed URLs, or attaching small MP3s to the email, fixes this.
 - A day with a missing newsletter waits until you run a manual flush. If short days become
   common, a quiet period works at any hour: build 30 minutes after the day's last arrival.
 - Claude writes the script, but the voice is still OpenAI TTS by default, because Claude has

@@ -4,6 +4,7 @@
 | --- | --- |
 | `main.tf` | SES inbound (S3 action only), raw-email and audio buckets |
 | `pipeline.tf` | raw-email SQS queue and DLQ, briefing-builder, processed bucket, episode-producer and its DLQ, IAM |
+| `feed.tf` | CloudFront and secret token for the private podcast feed and web player; uploads `web/player/` |
 | `observability.tf` | CloudWatch dashboard for S3, SQS, Lambda, and SES (`dashboard_url` output) |
 
 The SQS batch size comes from the number of sources in `config/briefing.json`. See

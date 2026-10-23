@@ -158,3 +158,20 @@ variable "polly_voice_id" {
   type        = string
   default     = "Danielle"
 }
+
+variable "feed_days" {
+  description = "How many days of episodes the private podcast feed lists."
+  type        = number
+  default     = 7
+}
+
+variable "episode_link" {
+  description = "What the episode email links to: player (mobile web player opened on that episode) or mp3 (the MP3 itself, played by the browser). Switch back to the plain MP3 link with -var=episode_link=mp3."
+  type        = string
+  default     = "player"
+
+  validation {
+    condition     = contains(["player", "mp3"], var.episode_link)
+    error_message = "episode_link must be player or mp3."
+  }
+}

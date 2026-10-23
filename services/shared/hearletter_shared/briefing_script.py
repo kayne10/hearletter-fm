@@ -105,6 +105,7 @@ def build_briefing_script(
         episode_date=episode_date,
         forwarder=forwarder,
         sources=tuple(item.source_email for item in ordered),
+        source_names=tuple(names),
         text="\n\n".join(paragraph for paragraph in paragraphs if paragraph.strip()),
         created_at=created_at,
         fingerprint=fingerprint,
