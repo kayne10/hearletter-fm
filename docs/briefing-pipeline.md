@@ -28,7 +28,10 @@ Two Lambdas, one work queue, two dead-letter queues.
 | `sources[]` | `email` (canonical sender) and `name` (spoken in the episode). Order = episode order. |
 | `sources[].aliases` | Other exact sender addresses, e.g. Morning Brew's `morningbrew@mail.sailthru.com`. |
 | `sources[].domains` | Sender domains, subdomains included. Never list a shared email-provider domain like `sailthru.com`. |
-| `sources[].parser` | Template-aware story parser: `tldr` or `rundown`. Omit to use the generic extractor. |
+| `sources[].parser` | Template-aware story parser: `tldr`, `rundown`, or `divider` for Substack-style items separated by rules. Omit to use the generic extractor. |
+| `sources[].required` | Default `true`. Set `false` for an occasional newsletter, such as a weekly, that should never hold an episode back. See "Optional sources" below. |
+| `sources[].carry_over_days` | For an optional source: how many days an unused issue waits for an episode (default 7). |
+| `sources[].max_stories` | Per-source cap on staged stories, for example 2 for a long weekly. |
 | `sources[].sender_names` | From display names, case-insensitive. Last resort when the address is new. |
 | `flush_at` | Optional local `HH:MM` for a daily scheduled flush. Off (`null`) by default; see "Short days" below. |
 | `min_sources` | Sources needed before the script is built. `null` means all of them. |
@@ -51,6 +54,10 @@ They read the newsletter's own markers instead of guessing from paragraph shape:
 
 - **TLDR**: bold titles ending in "(N minute read)", followed by their paragraph. Entries marked
   "(Sponsor)" are skipped.
+- **Divider** (Data Engineering Weekly and other Substack-style newsletters): items separated by
+  horizontal rules, each a "Company: Title" line, an optional image caption, and a summary. The
+  masthead and editor's note before the first rule, sponsored items ("Event Alert", "Sponsored",
+  "Partner"), and the footer are skipped.
 - **The Rundown**: the stories under "LATEST DEVELOPMENTS", each made of "The Rundown:",
   "Why it matters:" and "The details:". Sponsor blocks ("TOGETHER WITH", "PRESENTED BY"), the
   "AI TRAINING" how-to and "QUICK HITS" are skipped.
@@ -60,6 +67,23 @@ preheader characters are stripped for every newsletter. If a parser finds nothin
 after a layout change, the generic extractor takes over. A `story_parser_found_nothing` log line
 records it, and the staged file's `extractor` field shows which one ran. The tests use
 `tests/fixtures/*_2026-10-20.txt`. Add a new fixture when a layout changes.
+
+## Optional sources
+
+Optional sources such as Data Engineering Weekly never count toward an episode being ready, and
+never trigger one on their own. Each issue is used by exactly one episode:
+
+- **Arrives before the day's episode:** it joins that episode.
+- **Arrives after the day's episode:** it waits for the next day's episode instead of producing
+  an "(update N)". A later update for a required newsletter keeps the same optional issues as
+  the version it replaces.
+- **No episode within `carry_over_days`:** it's dropped.
+- **Only the weekly arrived:** `make episode` builds from it alone if you want an episode anyway.
+
+"Used" is derived from the scripts themselves. Each script records the `included_digests` of the
+newsletters in it, so there's no separate marker to keep in sync. Polling or retrying until a
+weekly shows up would delay six mornings out of seven and misuse failure retries as a scheduler,
+so the design avoids it.
 
 ## Why staging, not just batching
 

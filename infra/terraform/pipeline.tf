@@ -3,8 +3,9 @@
 #   -> episode-producer -> S3 audio (MP3) + SES email from no-reply@<domain>
 
 locals {
-  briefing_config       = jsondecode(file("${path.module}/../../config/briefing.json"))
-  briefing_source_count = length(local.briefing_config.sources)
+  briefing_config = jsondecode(file("${path.module}/../../config/briefing.json"))
+  # Batch size tracks the daily (required) sources; optional ones like a weekly don't count.
+  briefing_source_count = length([for source in local.briefing_config.sources : source if try(source.required, true)])
 
   briefing_builder_name = "${local.name_prefix}-briefing-builder"
   episode_producer_name = "${local.name_prefix}-episode-producer"

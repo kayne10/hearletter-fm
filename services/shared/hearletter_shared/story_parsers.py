@@ -14,9 +14,13 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-INVISIBLE_RE = re.compile("[­͏؜ᅟᅠ឴឵᠎​-‏⁠-⁤﻿]")
+# Zero-width and filler characters email preheaders use to pad preview text.
+INVISIBLE_RE = re.compile(
+    r"[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u2060-\u2064\ufeff]"
+)
 URL_TOKEN_RE = re.compile(r"<https?://[^>\s]*>|\[image:[^\]]*\]", re.IGNORECASE)
-SPACES_RE = re.compile(r"[ \t ]+")
+# Non-breaking, figure, and narrow no-break spaces collapse to a plain space.
+SPACES_RE = re.compile(r"[ \t\u00a0\u2007\u202f]+")
 MAX_STORY_WORDS = 180
 
 
@@ -176,7 +180,58 @@ def rundown_story(category: str, block: list[str]) -> ParsedStory | None:
     return ParsedStory(title=title, text=text, section=category)
 
 
+# --- Divider-separated items (Substack-style, e.g. Data Engineering Weekly) -------------------
+# Items are separated by horizontal rules, which Gmail's text part renders as a dash line:
+# ------------------------------
+# Pinterest: Metrics Board: Building an Agent-ready Metrics Layer
+# [image: optional caption, possibly over several lines]
+#
+# Pinterest writes about the challenges ...
+#
+# *https://medium.com/...
+# *
+# The block before the first divider is the masthead/editor's note; the last block's footer has
+# no title + summary shape, so it drops out on its own.
+
+DIVIDER_RE = re.compile(r"^-{10,}$")
+DIVIDER_SKIP_TITLE_PREFIXES = ("event alert", "sponsored", "sponsor", "partner", "advertisement")
+BARE_URL_RE = re.compile(r"^\*?https?://\S*\*?$|^\*$")
+MAX_DIVIDER_TITLE_WORDS = 30
+MIN_DIVIDER_BODY_WORDS = 15
+
+
+def parse_divider_sections(text: str) -> list[ParsedStory]:
+    blocks: list[list[str]] = [[]]
+    for line in normalized_lines(text):
+        if DIVIDER_RE.match(line):
+            blocks.append([])
+        else:
+            blocks[-1].append(line)
+    if len(blocks) < 3:
+        return []  # no divider layout: let the generic extractor handle it
+    stories = [divider_story(block) for block in blocks[1:]]
+    return [story for story in stories if story is not None]
+
+
+def divider_story(block: list[str]) -> ParsedStory | None:
+    lines = [line for line in block if not BARE_URL_RE.match(line)]
+    while lines and not lines[0]:
+        lines.pop(0)
+    title_end = lines.index("") if "" in lines else len(lines)
+    title = " ".join(lines[:title_end]).replace("*", "").strip()
+    text = join_text(lines[title_end:])
+    if (
+        not title
+        or len(title.split()) > MAX_DIVIDER_TITLE_WORDS
+        or len(text.split()) < MIN_DIVIDER_BODY_WORDS
+        or title.lower().startswith(DIVIDER_SKIP_TITLE_PREFIXES)
+    ):
+        return None
+    return ParsedStory(title=title, text=text)
+
+
 STORY_PARSERS: dict[str, StoryParser] = {
     "tldr": parse_tldr,
     "rundown": parse_rundown,
+    "divider": parse_divider_sections,
 }

@@ -57,3 +57,40 @@ def test_editorial_validation() -> None:
         parse_briefing_config({"sources": [SOURCE], "editorial": {"target_minutes": 90}})
     defaults = parse_briefing_config({"sources": [SOURCE]}).editorial
     assert defaults.target_words == 1050 and defaults.topics == ()
+
+
+def test_optional_sources_parse_and_do_not_count_toward_readiness() -> None:
+    config = parse_briefing_config(
+        {
+            "sources": [
+                SOURCE,
+                {
+                    "email": "weekly@example.com",
+                    "name": "Weekly",
+                    "required": False,
+                    "carry_over_days": 5,
+                    "max_stories": 2,
+                },
+            ]
+        }
+    )
+
+    assert [s.name for s in config.required_sources] == ["Morning Brew"]
+    assert [s.name for s in config.optional_sources] == ["Weekly"]
+    assert config.required_source_count == 1
+    assert config.carry_over_window_days == 5
+    assert config.stories_to_stage_for(config.optional_sources[0]) == 2
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"required": False}, "at least one required source"),
+        ({"carry_over_days": 0}, "carry_over_days"),
+        ({"max_stories": 0}, "max_stories"),
+        ({"required": "no"}, "required must be true or false"),
+    ],
+)
+def test_source_validation(override: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        parse_briefing_config({"sources": [{**SOURCE, **override}]})
