@@ -75,6 +75,18 @@
         "The Rundown AI"
       ],
       "parser": "rundown"
+    },
+    {
+      "email": "dataengineeringweekly@substack.com",
+      "name": "Data Engineering Weekly",
+      "sender_names": [
+        "Data Engineering Weekly",
+        "Ananth Packkildurai from Data Engineering Weekly"
+      ],
+      "parser": "divider",
+      "required": false,
+      "carry_over_days": 7,
+      "max_stories": 2
     }
   ]
 }

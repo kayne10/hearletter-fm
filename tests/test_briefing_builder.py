@@ -19,7 +19,7 @@ from briefing_fixtures import (
     forwarded_email,
     sqs_record,
 )
-from hearletter_domain.briefing import BriefingConfig
+from hearletter_domain.briefing import BriefingConfig, StagedNewsletter
 from hearletter_shared.config import REPO_CONFIG_PATH, load_briefing_config
 from hearletter_shared.object_store import LocalObjectStore
 
@@ -84,7 +84,7 @@ def run(
 
 
 def test_repo_config_has_the_three_morning_sources(config: BriefingConfig) -> None:
-    assert [source.email for source in config.sources] == [
+    assert [source.email for source in config.required_sources] == [
         "dan@tldrnewsletter.com",
         "crew@morningbrew.com",
         "news@daily.therundown.ai",
@@ -103,7 +103,7 @@ def test_one_batch_with_all_sources_builds_one_script(
     script = only_script(store)
     assert script["forwarder"] == FORWARDER
     assert script["title"] == "Morning Briefing - 2026-10-12"
-    assert script["sources"] == [source.email for source in config.sources]
+    assert script["sources"] == [source.email for source in config.required_sources]
     text = script["text"]
     assert text.index("TLDR") < text.index("Morning Brew") < text.index("The Rundown")
     assert "Unsubscribe" not in text
@@ -437,3 +437,146 @@ def test_parser_that_finds_nothing_falls_back_to_generic(
     staged = json.loads(store.get_bytes(key))
     assert staged["extractor"] == "generic"
     assert staged["stories"]
+
+
+# --- Optional (weekly) sources ---------------------------------------------------------------
+
+DEW_EMAIL = "dataengineeringweekly@substack.com"
+DEW_STAGED_KEY = "inbox/reader_example.com/2026-10-12/dataengineeringweekly_substack.com.json"
+DEW_BODY = (Path(__file__).parent / "fixtures" / "dew_2026-10-25.txt").read_text()
+
+
+def at(day: int, time: str = "07:15") -> str:
+    """Email Date header for October <day> 2026 at <time> Denver time (Oct 12 is a Monday)."""
+
+    weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][(day - 12) % 7]
+    return f"{weekday}, {day} Oct 2026 {time}:00 -0600"
+
+
+def dew(sent: str, subject: str = "Data Engineering Weekly #293") -> bytes:
+    return forwarded_email(
+        source_email=DEW_EMAIL,
+        source_name="Ananth Packkildurai from Data Engineering Weekly",
+        subject=subject,
+        topics=[],
+        body=DEW_BODY,
+        date=sent,
+    )
+
+
+def dailies(sent: str, tag: str) -> dict[str, bytes]:
+    """The three required newsletters for one morning; tag makes each day's content differ."""
+
+    sources = [
+        ("dan@tldrnewsletter.com", "TLDR"),
+        ("crew@morningbrew.com", "Morning Brew"),
+        ("news@daily.therundown.ai", "The Rundown"),
+    ]
+    return {
+        f"{tag}-{name}": forwarded_email(
+            source_email=email,
+            source_name=name,
+            subject=f"{name} {tag}",
+            topics=[f"{name}{tag}corp", f"{name}{tag}labs"],
+            date=sent,
+        )
+        for email, name in sources
+    }
+
+
+def day_script_list(store: LocalObjectStore, day: str) -> list[dict[str, Any]]:
+    keys = [
+        k
+        for k in store.list_keys(f"scripts/reader_example.com/{day}/")
+        if k.endswith("script.json")
+    ]
+    return sorted((json.loads(store.get_bytes(k)) for k in keys), key=lambda s: s["version"])
+
+
+def test_weekly_arriving_before_the_episode_joins_it(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    outcome = run({"w": dew(at(12, "06:00")), **dailies(at(12), "mon")}, store=store, config=config)
+
+    assert outcome.briefings[0]["status"] == "built"
+    assert outcome.briefings[0]["optional"] == [DEW_EMAIL]
+    (script,) = day_script_list(store, "2026-10-12")
+    assert DEW_EMAIL in script["sources"]
+    staged = json.loads(
+        store.get_bytes(
+            "inbox/reader_example.com/2026-10-12/dataengineeringweekly_substack.com.json"
+        )
+    )
+    assert staged["extractor"] == "divider" and len(staged["stories"]) == 2  # max_stories
+
+
+def test_weekly_alone_never_triggers_an_episode(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    outcome = run({"w": dew(at(12))}, store=store, config=config)
+
+    assert outcome.briefings[0]["status"] == "waiting"
+    assert outcome.briefings[0]["missing"] == [s.email for s in config.required_sources]
+    assert day_script_list(store, "2026-10-12") == []
+
+
+def test_manual_flush_can_build_from_the_weekly_alone(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"w": dew(at(12))}, store=store, config=config)
+
+    (result,) = builder.flush_due_briefings(
+        processed=store, config=config, now=datetime(2026, 10, 12, 18, 0, tzinfo=UTC)
+    )
+
+    assert result["status"] == "built" and result["optional"] == [DEW_EMAIL]
+
+
+def test_weekly_after_the_episode_waits_for_tomorrow_and_is_used_once(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run(dailies(at(12), "mon"), store=store, config=config)
+
+    late = run({"w": dew(at(12, "20:00"))}, store=store, config=config)
+    assert late.briefings[0]["status"] == "unchanged"  # no "(update 1)" email for the weekly
+    assert len(day_script_list(store, "2026-10-12")) == 1
+
+    tuesday = run(dailies(at(13), "tue"), store=store, config=config)
+    assert tuesday.briefings[0]["optional"] == [DEW_EMAIL]
+
+    wednesday = run(dailies(at(14), "wed"), store=store, config=config)
+    assert wednesday.briefings[0]["status"] == "built"
+    assert wednesday.briefings[0]["optional"] == []  # already played on Tuesday
+
+
+def test_weekly_expires_after_its_carry_over_window(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"w": dew(at(12))}, store=store, config=config)  # Monday, no dailies that day
+
+    eight_days_later = run(dailies(at(20), "next-tue"), store=store, config=config)
+
+    assert eight_days_later.briefings[0]["status"] == "built"
+    assert eight_days_later.briefings[0]["optional"] == []
+
+
+def test_update_for_a_late_daily_keeps_the_weekly_it_already_had(
+    store: LocalObjectStore, config: BriefingConfig
+) -> None:
+    run({"w": dew(at(12, "06:00")), **dailies(at(12), "mon")}, store=store, config=config)
+    corrected = forwarded_email(
+        source_email="dan@tldrnewsletter.com",
+        source_name="TLDR",
+        subject="TLDR correction",
+        topics=["Correctioncorp", "Fixlabs"],
+        date=at(12, "09:00"),
+    )
+
+    update = run({"fix": corrected}, store=store, config=config)
+
+    assert update.briefings[0]["status"] == "built" and update.briefings[0]["version"] == 2
+    assert update.briefings[0]["optional"] == [DEW_EMAIL]
+    staged_dew = StagedNewsletter.from_dict(json.loads(store.get_bytes(DEW_STAGED_KEY)))
+    first, second = day_script_list(store, "2026-10-12")
+    assert staged_dew.content_digest() in first["included_digests"]
+    assert staged_dew.content_digest() in second["included_digests"]

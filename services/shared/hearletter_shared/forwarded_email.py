@@ -101,19 +101,36 @@ def find_forwarded_block(text: str | None) -> ForwardedBlock | None:
 
     lines = text[match.end() :].splitlines()
     headers: dict[str, str] = {}
+    last_header: str | None = None
     body_start = len(lines)
     for position, line in enumerate(lines):
         header = HEADER_LINE_RE.match(line)
         if header:
-            headers.setdefault(header.group(1).lower(), header.group(2).strip())
+            last_header = header.group(1).lower()
+            headers.setdefault(last_header, header.group(2).strip())
             continue
         if not headers and not line.strip():
             continue  # blank lines between the marker and the first header
+        if last_header and line.strip() and is_header_continuation(lines, position):
+            # Gmail wraps long header lines, e.g. "From: Long Name <" + "addr@example.com>".
+            headers[last_header] = f"{headers[last_header]} {line.strip()}".replace("< ", "<")
+            continue
         body_start = position
         break
     if "from" not in headers:
         return None
     return ForwardedBlock(headers=headers, body="\n".join(lines[body_start:]).strip())
+
+
+def is_header_continuation(lines: list[str], position: int) -> bool:
+    """A wrapped header line sits between headers: the next line is a header or blank.
+
+    Body text never does, because forwarders separate the header block from the body with a
+    blank line, and the body's first line is followed by more body.
+    """
+
+    following = lines[position + 1] if position + 1 < len(lines) else ""
+    return not following.strip() or HEADER_LINE_RE.match(following) is not None
 
 
 def address_of(value: str) -> str | None:

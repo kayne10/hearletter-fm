@@ -68,3 +68,40 @@ def test_config_rejects_unknown_parser() -> None:
     assert parse_briefing_config({"sources": [source]}).sources[0].parser == "tldr"
     with pytest.raises(ValueError, match="Unknown story parser"):
         parse_briefing_config({"sources": [{**source, "parser": "morning-brew"}]})
+
+
+DEW_TEXT = (FIXTURES / "dew_2026-10-25.txt").read_text()
+
+
+def test_divider_sections_read_every_item_and_skip_masthead_sponsor_and_footer() -> None:
+    from hearletter_shared.story_parsers import parse_divider_sections
+
+    stories = parse_divider_sections(DEW_TEXT)
+
+    assert [story.title for story in stories[:2]] == [
+        "Pinterest: Metrics Board: Building an Agent-ready Metrics Layer",
+        "Chenyu Zhang: The Semantic Layer Race: Snowflake, Databricks, Fabric IQ, and Apache Ossie",
+    ]
+    assert stories[-1].title.startswith("Meesho: Kafka at Meesho")
+    assert len(stories) == 8
+    titles = " ".join(story.title for story in stories)
+    for skipped in ("Editor", "Event Alert", "NEXT QUERY", "All rights reserved"):
+        assert skipped not in titles
+
+
+def test_divider_sections_keep_summaries_and_drop_link_lines_and_captions() -> None:
+    from hearletter_shared.story_parsers import parse_divider_sections
+
+    by_title = {story.title.split(":")[0]: story.text for story in parse_divider_sections(DEW_TEXT)}
+
+    assert by_title["Pinterest"].startswith("Pinterest writes about the challenges")
+    assert "Vega-Lite and Mosaic" in by_title["Microsoft"]  # inline links keep their words
+    assert "Figure 1" not in by_title["LinkedIn"]  # image caption dropped
+    for text in by_title.values():
+        assert "http" not in text and "*" not in text
+
+
+def test_divider_parser_ignores_newsletters_without_dividers() -> None:
+    from hearletter_shared.story_parsers import parse_divider_sections
+
+    assert parse_divider_sections(TLDR_TEXT) == []

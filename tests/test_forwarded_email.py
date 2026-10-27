@@ -55,3 +55,36 @@ def test_auto_forward_keeps_original_sender() -> None:
     assert newsletter.source_email == "crew@morningbrew.com"
     assert newsletter.forwarder == FORWARDER
     assert newsletter.received_at == "2026-10-12T00:00Z"
+
+
+def test_wrapped_from_header_keeps_the_address_and_the_other_headers() -> None:
+    block = find_forwarded_block(
+        "---------- Forwarded message ---------\n"
+        "From: Ananth Packkildurai from Data Engineering Weekly <\n"
+        "dataengineeringweekly@substack.com>\n"
+        "Date: Sun, Oct 25, 2026 at 8:12 PM\n"
+        "Subject: Data Engineering Weekly #293\n"
+        "To: <reader@example.com>\n\n\n"
+        "The Weekly Data Engineering Newsletter\n"
+    )
+
+    assert block is not None
+    assert block.headers["from"] == (
+        "Ananth Packkildurai from Data Engineering Weekly <dataengineeringweekly@substack.com>"
+    )
+    assert block.headers["subject"] == "Data Engineering Weekly #293"
+    assert block.body == "The Weekly Data Engineering Newsletter"
+
+
+def test_body_that_directly_follows_the_headers_is_not_swallowed() -> None:
+    block = find_forwarded_block(
+        "Begin forwarded message:\n"
+        "From: News <news@example.com>\n"
+        "Subject: Hi\n"
+        "First line of the newsletter\n"
+        "Second line of the newsletter\n"
+    )
+
+    assert block is not None
+    assert block.headers["subject"] == "Hi"
+    assert block.body.startswith("First line of the newsletter")

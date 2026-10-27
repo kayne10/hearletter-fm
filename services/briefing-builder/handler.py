@@ -26,7 +26,7 @@ import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote_plus
 from zoneinfo import ZoneInfo
@@ -110,9 +110,7 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         briefings=outcome.briefings,
         failed_message_ids=outcome.failed_message_ids,
     )
-    return {
-        "batchItemFailures": [{"itemIdentifier": mid} for mid in outcome.failed_message_ids]
-    }
+    return {"batchItemFailures": [{"itemIdentifier": mid} for mid in outcome.failed_message_ids]}
 
 
 def get_config() -> BriefingConfig:
@@ -231,7 +229,10 @@ def stage_raw_email(
 
     clean_text, _ = clean_newsletter_content(html=newsletter.html, text=newsletter.text)
     stories, extractor = extract_stories(
-        source.parser, newsletter.text, clean_text, max_stories=config.stories_to_stage
+        source.parser,
+        newsletter.text,
+        clean_text,
+        max_stories=config.stories_to_stage_for(source),
     )
     staged = StagedNewsletter(
         forwarder=newsletter.forwarder,
@@ -289,35 +290,36 @@ def finalize_briefing(
 
     Scripts are keyed by a fingerprint of the newsletter content, so this is idempotent:
     - same content as an existing script (redelivery, re-forward): nothing happens;
-    - the day's first script: waits for the required sources (the deadline flush passes
-      required_sources=1);
-    - the day already has a script and the content changed (a late or corrected newsletter):
+    - the day's first script: waits for the required sources (a manual flush passes
+      required_sources=1 and also counts optional issues);
+    - the day already has a script and a required newsletter changed (late or corrected):
       a new version is written, and the producer emails it.
+
+    Optional sources never hold an episode back and never cause an update on their own; see
+    optional_newsletters for how a carried-over issue joins exactly one episode.
     """
 
-    staged = [
-        StagedNewsletter.from_dict(get_json(processed, staged_object))
-        for staged_object in processed.list_keys(inbox_prefix(forwarder, episode_date))
-        if staged_object.endswith(".json")
-    ]
-    staged = [item for item in staged if config.source_for(item.source_email) is not None]
-    present = {item.source_email for item in staged}
-    existing = [
-        key
-        for key in processed.list_keys(day_scripts_prefix(forwarder, episode_date))
-        if key.endswith(f"/{SCRIPT_FILE_NAME}")
-    ]
+    staged = load_staged(processed, forwarder, episode_date, config)
+    required = [item for item in staged if is_required(item, config)]
+    present = {item.source_email for item in required}
+    existing = day_scripts(processed, forwarder, episode_date)
+    optional = optional_newsletters(
+        processed, forwarder=forwarder, episode_date=episode_date, config=config, existing=existing
+    )
+    newsletters = required + optional
+
     needed = required_sources or config.required_source_count
-    if not staged or (not existing and len(present) < needed):
-        missing = [source.email for source in config.sources if source.email not in present]
+    ready = len(present) + (len(optional) if required_sources else 0)
+    if not newsletters or (not existing and ready < needed):
+        missing = [s.email for s in config.required_sources if s.email not in present]
         return {"status": "waiting", "present": sorted(present), "missing": missing}
 
-    key = script_key(forwarder, episode_date, briefing_fingerprint(staged))
+    key = script_key(forwarder, episode_date, briefing_fingerprint(newsletters))
     if key in existing:
         return {"status": "unchanged", "script_key": key}
 
     script = build_briefing_script(
-        newsletters=staged,
+        newsletters=newsletters,
         config=config,
         forwarder=forwarder,
         episode_date=episode_date,
@@ -325,13 +327,109 @@ def finalize_briefing(
         version=len(existing) + 1,
     )
     if script_writer is not None:
-        script = rewrite_script(script, staged, config=config, script_writer=script_writer)
+        script = rewrite_script(script, newsletters, config=config, script_writer=script_writer)
     written = put_json(processed, key, script.to_dict(), if_absent=True)
     return {
         "status": "built" if written else "unchanged",
         "script_key": key,
         "version": script.version,
         "writer": script.writer,
+        "optional": [item.source_email for item in optional],
+    }
+
+
+def optional_newsletters(
+    processed: ObjectStore,
+    *,
+    forwarder: str,
+    episode_date: str,
+    config: BriefingConfig,
+    existing: dict[str, BriefingScript],
+) -> list[StagedNewsletter]:
+    """Optional issues for this episode, each used by exactly one day's episode.
+
+    "Used" is derived from the scripts themselves (their included_digests), so there is no
+    separate marker to keep in sync. Rules:
+    - the day already has an episode: keep exactly the optional issues its latest version
+      used, so a weekly arriving after the morning's episode waits for tomorrow instead of
+      triggering an update;
+    - otherwise: the newest issue per optional source staged within that source's
+      carry_over_days and not used by an earlier day's episode.
+    """
+
+    if not config.optional_sources:
+        return []
+    day = date.fromisoformat(episode_date)
+    window = [
+        (day - timedelta(days=offset)).isoformat()
+        for offset in range(config.carry_over_window_days + 1)
+    ]
+    candidates = [
+        item
+        for staged_date in window
+        for item in load_staged(processed, forwarder, staged_date, config)
+        if is_optional_in_window(item, config, day)
+    ]
+    if existing:
+        latest = max(existing.values(), key=lambda script: script.version)
+        kept = set(latest.included_digests)
+        return unique_by_digest(item for item in candidates if item.content_digest() in kept)
+
+    used = {
+        digest
+        for staged_date in window
+        for script in day_scripts(processed, forwarder, staged_date).values()
+        for digest in script.included_digests
+    }
+    newest_per_source: dict[str, StagedNewsletter] = {}
+    for item in sorted(candidates, key=lambda candidate: candidate.received_at):
+        if item.content_digest() not in used:
+            newest_per_source[item.source_email] = item
+    return list(newest_per_source.values())
+
+
+def is_required(item: StagedNewsletter, config: BriefingConfig) -> bool:
+    source = config.source_for(item.source_email)
+    return source is not None and source.required
+
+
+def is_optional_in_window(item: StagedNewsletter, config: BriefingConfig, day: date) -> bool:
+    source = config.source_for(item.source_email)
+    if source is None or source.required:
+        return False
+    oldest = (day - timedelta(days=source.carry_over_days)).isoformat()
+    return oldest <= item.episode_date <= day.isoformat()
+
+
+def unique_by_digest(items: Iterable[StagedNewsletter]) -> list[StagedNewsletter]:
+    unique: dict[str, StagedNewsletter] = {}
+    for item in items:
+        unique.setdefault(item.content_digest(), item)
+    return list(unique.values())
+
+
+def load_staged(
+    processed: ObjectStore, forwarder: str, episode_date: str, config: BriefingConfig
+) -> list[StagedNewsletter]:
+    """The day's staged newsletters from configured sources."""
+
+    staged = [
+        StagedNewsletter.from_dict(get_json(processed, key))
+        for key in processed.list_keys(inbox_prefix(forwarder, episode_date))
+        if key.endswith(".json")
+    ]
+    return [item for item in staged if config.source_for(item.source_email) is not None]
+
+
+def day_scripts(
+    processed: ObjectStore, forwarder: str, episode_date: str
+) -> dict[str, BriefingScript]:
+    """The day's scripts by key (every version, including pre-versioning scripts)."""
+
+    return {
+        key: BriefingScript.from_dict(get_json(processed, key))
+        for key in processed.list_keys(day_scripts_prefix(forwarder, episode_date))
+        if key.endswith(f"/{SCRIPT_FILE_NAME}")
     }
 
 

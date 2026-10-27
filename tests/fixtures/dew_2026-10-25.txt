@@ -1,0 +1,241 @@
+The Weekly Data Engineering Newsletter
+͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+  ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+    ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+  ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+    ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+  ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+    ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+  ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+    ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+  ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+    ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+  ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏
+    ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­͏     ­
+Forwarded this email? Subscribe here
+https://example.com/link
+for more
+https://example.com/link
+Data Engineering Weekly #293
+https://example.com/linkThe
+Weekly Data Engineering Newsletter
+
+Ananth Packkildurai https://example.com/link
+Oct 25
+https://example.com/link
+
+https://example.com/link
+https://example.com/link
+https://example.com/link
+https://example.com/link
+
+READ IN APP
+https://example.com/link
+
+Editor’s Note: Thinking Out Loud
+
+I started this section basically to write what the title says. A couple of
+things I’ve been thinking deeply about in today's data engineering
+landscape.
+
+First, what makes a catalog truly open? Personally, I think the *Iceberg
+catalog spec is the wrong step
+https://example.com/link*;
+it lets vendors build their own closed systems, limiting users' choices.
+
+Second, do we still need to do data modeling? Years of designing and
+building data platforms have taught me that frameworks serve an important
+purpose: they give people a shared language for understanding complex ideas
+and making decisions. A language transforms, *fades
+https://example.com/link*,
+and is *even born
+https://example.com/link*;
+data modeling is just a shared language. How will it evolve?
+
+Share your thoughts on these two topics in the comments; I'd love to keep
+the chat going.
+------------------------------
+Pinterest: Metrics Board: Building an Agent-ready Metrics Layer
+https://example.com/link
+
+Pinterest writes about the challenges with managing the metrics at scale,
+and how scattered metric definitions and manual pipelines slowed
+experiments and made reporting harder to trust. Metrics Board uses shared
+metric definitions to automate calculation, quality checks, and publishing
+across tools. Adoption of metric/ semantic layers is increasing across the
+ecosystem.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+Chenyu Zhang: The Semantic Layer Race: Snowflake, Databricks, Fabric IQ,
+and Apache Ossie
+https://example.com/link
+
+As the need for and adoption of the headless semantic layer grows, it is no
+surprise that all the major data platforms are offering it. The author
+compares how Snowflake, Databricks, and Microsoft capture calculation rules
+and business relationships, alongside Apache Ossie’s effort to exchange
+definitions across tools. Reliable answers still require maintained rules,
+clear ownership, and assistants that ask for clarification when several
+meanings fit.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+Event Alert: NEXT QUERY 2026 | Free Virtual Data + AI Summit | Nov 4
+https://example.com/link
+
+On November 4, NEXT QUERY 2026 brings those lessons into the open.
+Engineers from Apple, NVIDIA, Coinbase, Intuit, AppLovin, Microsoft AI,
+AWS, and Cisco will share what they built, what broke, and what they’d do
+differently. Here’s some of what you’ll hear:
+
+   -
+
+   Coinbase and AppLovin share architecture lessons from production, and
+   Intuit Mailchimp explains how it rebuilt its real-time customer data
+   platform.
+   -
+
+   Get AWS’s take on running StarRocks on EKS, see how Apple runs analytics
+   as a managed service, and hear how Carbon Arc moved 1 PB from Trino to
+   StarRocks.
+   -
+
+   GPUs for analytics. NVIDIA explains why GPU execution is now practical
+   for large-scale queries, and which workloads benefit most.
+
+20+ talks across two tracks, hosted by PhoenixAI (the original creator of
+StarRocks). Free and virtual, starting at 9:00 AM PT.
+
+Can’t make it live? Register anyway, and we’ll send you the recordings
+afterward.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+LinkedIn: Rebuilding LinkedIn’s Tracking Infrastructure: Scaling,
+Migrating, and Hardening a High-Volume Event Pipeline
+[image: Figure 1. Tracking events move from client SDKs through edge
+routing and the ingestion service. Latency-sensitive signals follow a
+direct real-time path, while Kafka supplies near-real-time and offline
+processing.]
+https://example.com/link
+
+LinkedIn describes rebuilding its tracking pipeline where different event
+types competed for the same resources. The approach essentially separated
+workloads, removed repeated request data, and compared sampled outputs
+while gradually moving traffic. The new service reached 90% of production
+traffic with no migration-related incidents, highlighting the value of
+verifying what downstream systems receive and keeping changes reversible.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+Meta: Scaling AI-Native Analytics Patterns at Meta
+https://example.com/link
+
+Meta writes about how teams repeatedly rebuilt common measurements,
+creating duplicate pipelines and inconsistent results. The article
+describes how its Analytics Libraries generate pipelines from reusable
+patterns, while agents use a tool that builds SQL from defined data models.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+Microsoft: Flint-interactive: A language for creating interactive data
+visualizations
+[image: Figure: Flint interactive allows the agent to describe interaction
+logic by mapping “what semantic event is the user interacting with” to
+“what updates they want for the canvas surface”. The compiler takes the
+heavy lifting of resolving visual updates and manages the runtime, which
+makes interaction authoring more reliable and cost effective.]
+https://example.com/link
+
+Microsoft Research’s Flint-interactive evolves the declarative grammar
+lineage pioneered by *Vega-Lite
+https://example.com/link*
+and *Mosaic
+https://example.com/link*
+for the agentic era, decoupling high-level semantic interaction specs from
+low-level visual rendering to eliminate the token bloat and layout
+fragility of LLM-generated charts. By pairing a state-machine compiler with
+native MCP integration, it turns traditionally static AI charts into
+bidirectional interfaces where user canvas selections feed directly back
+into multi-turn conversational data workflows.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+Snowflake: How we pushed CDC into Postgres, and turned replication into
+clockwork
+[image: Figure 1. Snowflake Postgres Data Mirroring]
+https://example.com/link
+
+Snowflake writes about challenges of keeping analytical copies of Postgres
+data consistent as table structures change and failures occur. A Postgres
+extension sends batches of changes through Iceberg tables, which Snowflake
+applies while keeping related updates together. Queries can also include
+pending changes, keeping results fresh even when destination tables are
+updated less often.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+JioHotstar: The Kafka Optimization That Saved Us $350K a Year
+https://example.com/link
+
+JioHotstar writes about slashing Kafka infra cost by inserting a stateless
+Go splitter service between their main ingestion topic and six downstream
+consumers, scanning raw Protobuf wire tags and using a custom out-of-order
+offset tracker to trim 7.5 KB client heartbeats down to 1.1 KB before
+fan-out. The article is an excellent reminder of the importance of schema
+design in event-stream architecture; if we get that wrong, we need a patch
+like the one above to fix a schema design problem in the network layer.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+Meesho: Kafka at Meesho: How Meesho-Queue Made Kafka Simple at Scale
+https://example.com/link
+
+Meesho describes how inconsistent Kafka settings and applications tied to
+specific clusters made tuning and migrations difficult. Meesho-Queue gives
+applications a stable queue ID while centrally managing settings,
+monitoring, and cluster assignments. This let the team move roughly 5,000
+topics to its own Kafka infrastructure without requiring application code
+changes.
+
+*https://example.com/link
+https://example.com/link*
+------------------------------
+
+*All rights reserved, Dewpeche Private Limited. I provide links for
+informational purposes and do not endorse them. All views expressed in this
+newsletter are my own and do not represent the opinions of any current,
+former, or future employers.*
+
+Like
+https://example.com/link
+Comment
+https://example.com/link
+Restack
+https://example.com/link
+
+
+© 2026 Dewpeche Private Limited
+548 Market Street
+https://example.com/link
+PMB 72296, San Francisco, CA 94104
+Unsubscribe
+https://example.com/link
+
+[image: Start your Substack]
+https://example.com/link

@@ -29,7 +29,7 @@ output "lambda_functions" {
 }
 
 output "briefing_batch_size" {
-  description = "SQS batch size, derived from the number of sources in config/briefing.json."
+  description = "SQS batch size: the number of required sources in config/briefing.json."
   value       = local.briefing_source_count
 }
 

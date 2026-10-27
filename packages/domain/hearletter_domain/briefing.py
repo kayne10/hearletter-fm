@@ -34,6 +34,11 @@ class NewsletterSource:
     domains: tuple[str, ...] = ()
     sender_names: tuple[str, ...] = ()
     parser: str | None = None  # template-aware story parser name; None uses the generic one
+    # Optional sources (e.g. a weekly) never hold an episode back. An issue joins the next
+    # episode built within carry_over_days of its arrival, exactly once.
+    required: bool = True
+    carry_over_days: int = 7
+    max_stories: int | None = None  # per-source cap on staged stories; None uses the default
 
     @property
     def slug(self) -> str:
@@ -96,10 +101,16 @@ class BriefingConfig:
     editorial: EditorialConfig = field(default_factory=EditorialConfig)
 
     def __post_init__(self) -> None:
-        if not self.sources:
-            raise ValueError("Briefing config must define at least one source")
-        if self.min_sources is not None and not 1 <= self.min_sources <= len(self.sources):
-            raise ValueError("min_sources must be between 1 and the number of sources")
+        required = self.required_sources
+        if not required:
+            raise ValueError("Briefing config must define at least one required source")
+        if self.min_sources is not None and not 1 <= self.min_sources <= len(required):
+            raise ValueError("min_sources must be between 1 and the number of required sources")
+        for source in self.sources:
+            if not 1 <= source.carry_over_days <= 30:
+                raise ValueError(f"{source.email}: carry_over_days must be between 1 and 30")
+            if source.max_stories is not None and source.max_stories < 1:
+                raise ValueError(f"{source.email}: max_stories must be at least 1")
         if self.flush_at is not None and not _LOCAL_TIME_RE.match(self.flush_at):
             raise ValueError("flush_at must be a 24-hour local time like 08:00")
 
@@ -109,11 +120,28 @@ class BriefingConfig:
 
         return max(self.max_stories_per_source, self.editorial.candidates_per_source)
 
+    def stories_to_stage_for(self, source: NewsletterSource) -> int:
+        return source.max_stories or self.stories_to_stage
+
+    @property
+    def required_sources(self) -> tuple[NewsletterSource, ...]:
+        return tuple(source for source in self.sources if source.required)
+
+    @property
+    def optional_sources(self) -> tuple[NewsletterSource, ...]:
+        return tuple(source for source in self.sources if not source.required)
+
+    @property
+    def carry_over_window_days(self) -> int:
+        """How far back to look for unused optional issues (0 when there are none)."""
+
+        return max((source.carry_over_days for source in self.optional_sources), default=0)
+
     @property
     def required_source_count(self) -> int:
-        """Number of distinct sources needed before a briefing is built."""
+        """Number of distinct required sources needed before a briefing is built."""
 
-        return self.min_sources or len(self.sources)
+        return self.min_sources or len(self.required_sources)
 
     def source_for(
         self, email: str | None, display_name: str | None = None
@@ -214,6 +242,7 @@ class BriefingScript:
     created_at: str
     fingerprint: str = ""  # identifies the exact set of newsletter content in this episode
     source_names: tuple[str, ...] = ()
+    included_digests: tuple[str, ...] = ()  # content digest of every newsletter in the episode
     version: int = 1  # 1 for the day's first episode, 2+ when later newsletters change it
     writer: str = "template"  # "template" or the Claude model id that wrote the text
     template_text: str | None = None  # template draft kept for comparison when AI-written
@@ -228,6 +257,7 @@ class BriefingScript:
                 **value,
                 "sources": tuple(value.get("sources", [])),
                 "source_names": tuple(value.get("source_names", [])),
+                "included_digests": tuple(value.get("included_digests", [])),
             }
         )
 

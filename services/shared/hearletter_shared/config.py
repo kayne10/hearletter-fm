@@ -89,7 +89,16 @@ def parse_source(item: Mapping[str, Any]) -> NewsletterSource:
         domains=lowered(item.get("domains", [])),
         sender_names=lowered(item.get("sender_names", [])),
         parser=parse_parser_name(item.get("parser")),
+        required=parse_bool(item.get("required", True), field="required"),
+        carry_over_days=int(item.get("carry_over_days", 7)),
+        max_stories=int(item["max_stories"]) if item.get("max_stories") is not None else None,
     )
+
+
+def parse_bool(value: Any, *, field: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{field} must be true or false, got {value!r}")
 
 
 def parse_parser_name(value: Any) -> str | None:
